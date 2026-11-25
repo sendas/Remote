@@ -16,9 +16,31 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory,
 });
 builder.Host.UseWindowsService(o => o.ServiceName = "ClassroomServer");
+var managedTls = cfg.TlsEngine.Equals("managed", StringComparison.OrdinalIgnoreCase) ||
+                 (cfg.TlsEngine.Equals("auto", StringComparison.OrdinalIgnoreCase) &&
+                  OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10));
+ManagedTls? tls = null;
+if (managedTls)
+{
+    var (pfx, pfxPassword) = Certificates.PfxBytes(cfg);
+    tls = new ManagedTls(pfx, pfxPassword,
+        LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Tls"));
+    // o TLS gerido bloqueia uma thread por ligação: garante threads suficientes desde o início
+    ThreadPool.GetMinThreads(out var w, out var io);
+    ThreadPool.SetMinThreads(Math.Max(w, 300), Math.Max(io, 300));
+}
+
 builder.WebHost.ConfigureKestrel(k =>
 {
-    k.Listen(IPAddress.Any, cfg.Port, l => l.UseHttps(cert));
+    k.Listen(IPAddress.Any, cfg.Port, l =>
+    {
+        if (tls != null)
+        {
+            l.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1;
+            l.Use(tls.Middleware);
+        }
+        else l.UseHttps(cert);
+    });
     k.Limits.MaxRequestBodySize = 64 * 1024;
 });
 builder.Services.AddSingleton(cfg);
@@ -32,6 +54,7 @@ var pin = Certificates.Pin(cert);
 File.WriteAllText(Path.Combine(ServerConfig.DataDir, "certificado-pin.txt"), pin);
 log.LogInformation("Consola do professor: https://{Host}:{Port}/", Dns.GetHostName(), cfg.Port);
 log.LogInformation("CertificatePin para os agentes: {Pin}", pin);
+log.LogInformation("Motor HTTPS: {Engine}", managedTls ? "interno (BouncyCastle)" : "Windows/sistema");
 
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 

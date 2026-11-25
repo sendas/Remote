@@ -28,6 +28,12 @@ public static class Certificates
             X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet);
     }
 
+    /// <summary>Bytes do PFX em uso e respetiva palavra-passe (para o motor TLS gerido).</summary>
+    public static (byte[] Pfx, string? Password) PfxBytes(ServerConfig cfg) =>
+        !string.IsNullOrWhiteSpace(cfg.CertificatePath)
+            ? (File.ReadAllBytes(cfg.CertificatePath), cfg.CertificatePassword)
+            : (File.ReadAllBytes(Path.Combine(ServerConfig.DataDir, "server.pfx")), null);
+
     /// <summary>SHA-256 do certificado (hex). É este valor que se põe em "CertificatePin" no agente.</summary>
     public static string Pin(X509Certificate2 cert) =>
         Convert.ToHexString(SHA256.HashData(cert.RawData));

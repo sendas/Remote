@@ -20,6 +20,12 @@ public sealed class ServerConfig
     /// <summary>Certificado PFX próprio (ex.: emitido pela CA do domínio). Vazio = autoassinado gerado.</summary>
     public string CertificatePath { get; set; } = "";
     public string CertificatePassword { get; set; } = "";
+    /// <summary>
+    /// Motor de HTTPS: "auto" (por omissão), "windows" (SChannel) ou "managed" (BouncyCastle, dentro do programa).
+    /// Em "auto" usa "managed" em Windows anteriores ao 10 / Server 2016 (ex.: Server 2008 R2), onde o SChannel
+    /// não tem as cifras que os browsers atuais exigem.
+    /// </summary>
+    public string TlsEngine { get; set; } = "auto";
     /// <summary>Intervalo entre miniaturas enviadas por cada aluno.</summary>
     public int ThumbnailIntervalMs { get; set; } = 2000;
     public int ThumbnailWidth { get; set; } = 360;

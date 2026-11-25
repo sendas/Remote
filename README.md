@@ -105,6 +105,11 @@ Configuração avançada em `C:\ClassroomServer\data\classroom-server.json` (int
 FPS do ecrã em grande, certificado próprio em `CertificatePath`, etc.). Logs de auditoria em
 `C:\ClassroomServer\data\auditoria\AAAA-MM.log`.
 
+> **Windows Server 2008 R2 / 2012:** o HTTPS do Windows (SChannel) nestas versões não tem as cifras que
+> os browsers atuais exigem (erro `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`). O servidor deteta isto e usa
+> automaticamente um motor HTTPS próprio (BouncyCastle, TLS 1.2/1.3), sem precisar de reiniciar nem mexer
+> no registo. Pode forçar-se com `"TlsEngine": "managed"` ou `"windows"` em `classroom-server.json`.
+
 > **Certificado:** por omissão é gerado um autoassinado. O browser mostra um aviso na primeira vez
 > (aceita-o, ou instala o certificado nos portáteis dos professores). Se a escola tiver uma CA no
 > domínio, emite um certificado para o servidor e indica-o em `CertificatePath`; nesse caso podes deixar
