@@ -1,3 +1,4 @@
+﻿using System.IO.Pipes;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,7 +17,7 @@ internal sealed class AgentClient
 
     private readonly AgentConfig _cfg;
     private readonly Func<string> _currentUser;
-    private ClientWebSocket? _ws;
+    private WebSocket? _ws;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     public event Action<JsonNode>? Command;
@@ -51,20 +52,35 @@ internal sealed class AgentClient
         {
             var url = _cfg.ServerUrls[idx % _cfg.ServerUrls.Count];
             idx++;
+            NamedPipeClientStream? pipe = null;
             try
             {
-                using var ws = new ClientWebSocket();
-                ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
-                ws.Options.RemoteCertificateValidationCallback = (_, cert, _, errors) =>
+                WebSocket ws;
+                if (url.StartsWith("pipe://", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (cert == null) return false;
-                    if (string.IsNullOrWhiteSpace(_cfg.CertificatePin))
-                        return errors == System.Net.Security.SslPolicyErrors.None;
-                    var pin = Convert.ToHexString(SHA256.HashData(cert.GetRawCertData()));
-                    return string.Equals(pin, _cfg.CertificatePin.Replace(":", "").Trim(), StringComparison.OrdinalIgnoreCase);
-                };
-                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
-                    await ws.ConnectAsync(new Uri(url), cts.Token);
+                    // \\SERVIDOR\pipe\SalaDeAula por SMB (porta 445): passa onde a firewall só deixa o tráfego do domínio.
+                    var u = new Uri(url);
+                    pipe = new NamedPipeClientStream(u.Host, u.AbsolutePath.Trim('/'), PipeDirection.InOut, PipeOptions.Asynchronous);
+                    await pipe.ConnectAsync(10000);
+                    ws = WebSocket.CreateFromStream(pipe, isServer: false, subProtocol: null, keepAliveInterval: TimeSpan.FromSeconds(20));
+                }
+                else
+                {
+                    var cws = new ClientWebSocket();
+                    cws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+                    cws.Options.RemoteCertificateValidationCallback = (_, cert, _, errors) =>
+                    {
+                        if (cert == null) return false;
+                        if (string.IsNullOrWhiteSpace(_cfg.CertificatePin))
+                            return errors == System.Net.Security.SslPolicyErrors.None;
+                        var pin = Convert.ToHexString(SHA256.HashData(cert.GetRawCertData()));
+                        return string.Equals(pin, _cfg.CertificatePin.Replace(":", "").Trim(), StringComparison.OrdinalIgnoreCase);
+                    };
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                        await cws.ConnectAsync(new Uri(url), cts.Token);
+                    ws = cws;
+                }
+                using var wsDispose = ws;
 
                 _ws = ws;
                 await SendJson(new
@@ -93,13 +109,14 @@ internal sealed class AgentClient
                 if (_ws != null) ConnectionChanged?.Invoke(false);
                 _ws = null;
                 FullFps = 0;
+                try { pipe?.Dispose(); } catch { }
             }
             await Task.Delay(delay + Random.Shared.Next(1000)); // jitter: 30 PCs não reconectam todos ao mesmo tempo
             delay = Math.Min(delay * 2, 30000);
         }
     }
 
-    private async Task ReceiveLoop(ClientWebSocket ws)
+    private async Task ReceiveLoop(WebSocket ws)
     {
         var buf = new byte[256 * 1024];
         var ms = new MemoryStream();

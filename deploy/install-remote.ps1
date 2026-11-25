@@ -61,7 +61,9 @@ if (-not $ServerUrl) {
         Select-Object -First 1
     $ServerUrl = "wss://${ip}:$($cfgSrv.Port)/ws/agent"
 }
-Write-Host "   Servidor: $ServerUrl"
+# 1.º o canal SMB (porta 445, já aberta para os PCs do domínio), depois o HTTPS
+$urls = @("pipe://$($env:COMPUTERNAME)/SalaDeAula", $ServerUrl)
+Write-Host "   Servidor: $($urls -join '  |  ')"
 
 Passo "A copiar o agente (≈70 MB, pode demorar um minuto)"
 $exe = Join-Path $PSScriptRoot 'ClassroomAgent.exe'
@@ -74,7 +76,7 @@ Copy-Item $exe $prog -Force
 
 $json = @"
 {
-  "ServerUrls": ["$ServerUrl"],
+  "ServerUrls": ["$($urls[0])", "$($urls[1])"],
   "EnrollmentKey": "$key",
   "CertificatePin": "$pin",
   "Room": "$Room",
