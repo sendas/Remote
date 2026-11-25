@@ -12,6 +12,9 @@ internal static class Program
     {
         var mode = args.FirstOrDefault() ?? "";
 
+        if (mode == "--instalar")
+            return Installer.Run();
+
         if (mode == "--session" || mode == "--console")
         {
             RunningAsSystem = mode == "--session";

@@ -149,23 +149,21 @@ Abre `https://SRV-ESCOLA:8443/` em Chrome, Edge, Firefox ou Safari (Mac ou Windo
 
 ---
 
-## Instalação em massa por salas (a partir do servidor)
+## Instalação em massa por salas (GPO + MAC no AD)
 
-`deploy-escola.ps1` (na pasta do agente) lê a árvore de salas do AD (contas com o nome de cada PC dentro de
-pastas como `Sala TIC1`, `Sala 13`, `Biblioteca`), e instala o agente em cada PC ligado, com a sala certa:
+Cada PC instala o agente sozinho no arranque e descobre a sua sala comparando os seus endereços MAC com as
+contas da árvore de salas do AD (`_Computadores MAC AEEQ > EBVG > Alunos > ... > Sala X`). PCs que não estejam
+numa sala ativa não instalam nada.
 
-```powershell
-.\deploy-escola.ps1 -Simular              # mostra o plano, não instala nada
-.\deploy-escola.ps1 -Salas 'Sala TIC1'    # só uma sala
-.\deploy-escola.ps1                       # todas as salas de alunos
-```
+1. No servidor, na pasta do agente: `.\preparar-partilha.ps1` — cria `\\SERVIDOR\SalaDeAula$` com o agente,
+   `instalar.json` (salas ativas, nomes das salas) e `instalar.cmd`.
+2. GPO ligada ao domínio, filtrada por *Computadores do domínio*, com o script de arranque
+   `\\SERVIDOR\SalaDeAula$\instalar.cmd` e a política *Aguardar sempre pela rede no arranque*.
+3. Para instalar já nos PCs ligados: `.\instalar-agora.ps1` (ou `-Filtro 'EBVG*'`).
+4. Para ativar mais salas: `.\preparar-partilha.ps1 -Salas 'Sala TIC1','Sala TIC 2'` (ou `'*'`).
+   Nomes na consola: `-NomesSalas @{ 'Sala 13' = 'Sala TIC 2' }`.
 
-- Usa a versão **leve** do agente (pasta `leve`, .NET Framework, ~1 MB), que funciona em Windows 7, 8.1, 10 e 11.
-  O Windows 10/11 já tem o .NET Framework 4.8; nos Windows 7 sem ele, o relatório indica "falta o .NET Framework 4.8".
-- Os agentes ligam-se ao servidor pelo canal `\\SERVIDOR\pipe\SalaDeAula` (SMB, porta 445), que já está aberto
-  para os PCs do domínio — não é preciso abrir portas entre VLANs.
-- Pode correr-se várias vezes: PCs já instalados são saltados, PCs desligados ficam para a próxima.
-- A consola só recebe miniaturas da sala escolhida, e os PCs das salas que ninguém está a ver param de as enviar.
+Logs no PC: `C:\ProgramData\ClassroomAgent\instalar.log` e `agent.log`.
 
 ## Segurança e RGPD
 
