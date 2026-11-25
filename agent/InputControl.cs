@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using static ClassroomAgent.Native;
 
@@ -39,12 +39,12 @@ internal static class InputInjector
                 Mouse(n, MOVE | flag);
                 break;
             case "wheel":
-                var d = Math.Clamp(n["delta"]?.GetValue<int>() ?? 0, -1200, 1200);
+                var d = CompatMath.Clamp(n["delta"]?.GetValue<int>() ?? 0, -1200, 1200);
                 Mouse(n, MOVE, 0);
                 Send(new INPUT { type = INPUT_MOUSE, U = { mi = { dwFlags = WHEEL, mouseData = d } } });
                 break;
             case "key":
-                var vk = (ushort)Math.Clamp(n["vk"]?.GetValue<int>() ?? 0, 0, 255);
+                var vk = (ushort)CompatMath.Clamp(n["vk"]?.GetValue<int>() ?? 0, 0, 255);
                 if (vk == 0) return;
                 var flags = (n["down"]?.GetValue<bool>() ?? true) ? 0u : KEYUP;
                 if (ExtendedKeys.Contains(vk)) flags |= EXTENDED;
@@ -60,8 +60,8 @@ internal static class InputInjector
     private static void Mouse(JsonNode n, uint flags, int data = 0)
     {
         // coordenadas normalizadas (0..1) sobre o ecrã virtual -> 0..65535 do Windows
-        var x = Math.Clamp(n["x"]?.GetValue<double>() ?? 0, 0, 1);
-        var y = Math.Clamp(n["y"]?.GetValue<double>() ?? 0, 0, 1);
+        var x = CompatMath.Clamp(n["x"]?.GetValue<double>() ?? 0, 0, 1);
+        var y = CompatMath.Clamp(n["y"]?.GetValue<double>() ?? 0, 0, 1);
         Send(new INPUT
         {
             type = INPUT_MOUSE,
@@ -114,7 +114,7 @@ internal sealed class KeyboardBlocker : IDisposable
         {
             // KBDLLHOOKSTRUCT.flags bit 4 = LLKHF_INJECTED: deixa passar o que o professor envia
             var flags = Marshal.ReadInt32(l, 8);
-            if ((flags & 0x10) == 0) return 1;
+            if ((flags & 0x10) == 0) return (IntPtr)1;
         }
         return CallNextHookEx(_hook, code, w, l);
     }

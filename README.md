@@ -149,6 +149,24 @@ Abre `https://SRV-ESCOLA:8443/` em Chrome, Edge, Firefox ou Safari (Mac ou Windo
 
 ---
 
+## Instalação em massa por salas (a partir do servidor)
+
+`deploy-escola.ps1` (na pasta do agente) lê a árvore de salas do AD (contas com o nome de cada PC dentro de
+pastas como `Sala TIC1`, `Sala 13`, `Biblioteca`), e instala o agente em cada PC ligado, com a sala certa:
+
+```powershell
+.\deploy-escola.ps1 -Simular              # mostra o plano, não instala nada
+.\deploy-escola.ps1 -Salas 'Sala TIC1'    # só uma sala
+.\deploy-escola.ps1                       # todas as salas de alunos
+```
+
+- Usa a versão **leve** do agente (pasta `leve`, .NET Framework, ~1 MB), que funciona em Windows 7, 8.1, 10 e 11.
+  O Windows 10/11 já tem o .NET Framework 4.8; nos Windows 7 sem ele, o relatório indica "falta o .NET Framework 4.8".
+- Os agentes ligam-se ao servidor pelo canal `\\SERVIDOR\pipe\SalaDeAula` (SMB, porta 445), que já está aberto
+  para os PCs do domínio — não é preciso abrir portas entre VLANs.
+- Pode correr-se várias vezes: PCs já instalados são saltados, PCs desligados ficam para a próxima.
+- A consola só recebe miniaturas da sala escolhida, e os PCs das salas que ninguém está a ver param de as enviar.
+
 ## Segurança e RGPD
 
 - Ver o ecrã de alunos é tratamento de dados pessoais (muitas vezes de menores). Antes de usar:

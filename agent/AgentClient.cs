@@ -30,6 +30,8 @@ internal sealed class AgentClient
     public int ThumbIntervalMs { get; private set; } = 2000;
     public int ThumbWidth { get; private set; } = 360;
     public int FullFps { get; private set; }
+    /// <summary>O servidor desliga as miniaturas quando nenhuma consola está a ver a sala deste PC.</summary>
+    public bool ThumbsOn { get; private set; } = true;
     public int FailsafeUnlockMinutes { get; private set; } = 10;
 
     public AgentClient(AgentConfig cfg, Func<string> currentUser)
@@ -62,10 +64,18 @@ internal sealed class AgentClient
                     var u = new Uri(url);
                     pipe = new NamedPipeClientStream(u.Host, u.AbsolutePath.Trim('/'), PipeDirection.InOut, PipeOptions.Asynchronous);
                     await pipe.ConnectAsync(10000);
+#if NET
                     ws = WebSocket.CreateFromStream(pipe, isServer: false, subProtocol: null, keepAliveInterval: TimeSpan.FromSeconds(20));
+#else
+                    ws = new MiniWebSocket(pipe);
+#endif
                 }
                 else
                 {
+#if !NET
+                    // Windows 7/8.1 (.NET Framework): só o canal pipe:// é suportado
+                    throw new NotSupportedException("Esta versão do agente só usa pipe://");
+#else
                     var cws = new ClientWebSocket();
                     cws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
                     cws.Options.RemoteCertificateValidationCallback = (_, cert, _, errors) =>
@@ -73,12 +83,13 @@ internal sealed class AgentClient
                         if (cert == null) return false;
                         if (string.IsNullOrWhiteSpace(_cfg.CertificatePin))
                             return errors == System.Net.Security.SslPolicyErrors.None;
-                        var pin = Convert.ToHexString(SHA256.HashData(cert.GetRawCertData()));
+                        var pin = Compat.Hex(Compat.Sha256(cert.GetRawCertData()));
                         return string.Equals(pin, _cfg.CertificatePin.Replace(":", "").Trim(), StringComparison.OrdinalIgnoreCase);
                     };
                     using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                         await cws.ConnectAsync(new Uri(url), cts.Token);
                     ws = cws;
+#endif
                 }
                 using var wsDispose = ws;
 
@@ -111,7 +122,7 @@ internal sealed class AgentClient
                 FullFps = 0;
                 try { pipe?.Dispose(); } catch { }
             }
-            await Task.Delay(delay + Random.Shared.Next(1000)); // jitter: 30 PCs não reconectam todos ao mesmo tempo
+            await Task.Delay(delay + Compat.RandomNext(1000)); // jitter: 30 PCs não reconectam todos ao mesmo tempo
             delay = Math.Min(delay * 2, 30000);
         }
     }
@@ -126,7 +137,7 @@ internal sealed class AgentClient
             WebSocketReceiveResult r;
             do
             {
-                r = await ws.ReceiveAsync(buf, CancellationToken.None);
+                r = await ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None);
                 if (r.MessageType == WebSocketMessageType.Close) return;
                 ms.Write(buf, 0, r.Count);
                 if (ms.Length > 16 * 1024 * 1024) return;
@@ -135,7 +146,7 @@ internal sealed class AgentClient
             if (r.MessageType == WebSocketMessageType.Binary)
             {
                 if (ms.Length > 1 && ms.GetBuffer()[0] == Share)
-                    ShareFrame?.Invoke(ms.ToArray()[1..]);
+                    { var all = ms.ToArray(); var f = new byte[all.Length - 1]; Buffer.BlockCopy(all, 1, f, 0, f.Length); ShareFrame?.Invoke(f); }
                 continue;
             }
 
@@ -147,13 +158,17 @@ internal sealed class AgentClient
             switch (n["type"]?.GetValue<string>())
             {
                 case "welcome":
-                    ThumbIntervalMs = Math.Clamp(n["thumbIntervalMs"]?.GetValue<int>() ?? 2000, 500, 60000);
-                    ThumbWidth = Math.Clamp(n["thumbWidth"]?.GetValue<int>() ?? 360, 160, 800);
-                    FailsafeUnlockMinutes = Math.Clamp(n["failsafeUnlockMinutes"]?.GetValue<int>() ?? 10, 1, 1440);
+                    ThumbIntervalMs = CompatMath.Clamp(n["thumbIntervalMs"]?.GetValue<int>() ?? 2000, 500, 60000);
+                    ThumbWidth = CompatMath.Clamp(n["thumbWidth"]?.GetValue<int>() ?? 360, 160, 800);
+                    FailsafeUnlockMinutes = CompatMath.Clamp(n["failsafeUnlockMinutes"]?.GetValue<int>() ?? 10, 1, 1440);
                     _lastThumbHash = null; // envia logo uma miniatura
                     break;
+                case "thumbs":
+                    ThumbsOn = n["on"]?.GetValue<bool>() ?? true;
+                    if (ThumbsOn) _lastThumbHash = null; // envia logo uma miniatura atualizada
+                    break;
                 case "stream":
-                    FullFps = (n["on"]?.GetValue<bool>() ?? false) ? Math.Clamp(n["fps"]?.GetValue<int>() ?? 5, 1, 15) : 0;
+                    FullFps = (n["on"]?.GetValue<bool>() ?? false) ? CompatMath.Clamp(n["fps"]?.GetValue<int>() ?? 5, 1, 15) : 0;
                     Command?.Invoke(n);
                     break;
                 default:
@@ -169,7 +184,7 @@ internal sealed class AgentClient
         if (ws == null) return;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(msg);
         await _sendLock.WaitAsync();
-        try { await ws.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None); }
+        try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None); }
         catch { }
         finally { _sendLock.Release(); }
     }
@@ -184,7 +199,7 @@ internal sealed class AgentClient
         var pkt = new byte[jpeg.Length + 1];
         pkt[0] = kind;
         jpeg.CopyTo(pkt, 1);
-        try { ws.SendAsync(pkt, WebSocketMessageType.Binary, true, CancellationToken.None).GetAwaiter().GetResult(); }
+        try { ws.SendAsync(new ArraySegment<byte>(pkt), WebSocketMessageType.Binary, true, CancellationToken.None).GetAwaiter().GetResult(); }
         catch { }
         finally { _sendLock.Release(); }
     }
@@ -201,12 +216,12 @@ internal sealed class AgentClient
             {
                 if (!Connected) { Thread.Sleep(500); continue; }
 
-                var now = Environment.TickCount64;
+                var now = CompatMath.Ticks;
                 if (FullFps > 0)
                 {
                     var jpeg = ScreenCapture.Capture(1600, 60, out _);
                     if (jpeg != null) TrySendFrame(Full, jpeg);
-                    var wait = 1000 / FullFps - (int)(Environment.TickCount64 - now);
+                    var wait = 1000 / FullFps - (int)(CompatMath.Ticks - now);
                     if (wait > 0) Thread.Sleep(wait);
                 }
                 else
@@ -214,13 +229,13 @@ internal sealed class AgentClient
                     Thread.Sleep(100);
                 }
 
-                now = Environment.TickCount64;
-                if (now - lastThumb >= ThumbIntervalMs)
+                now = CompatMath.Ticks;
+                if (ThumbsOn && now - lastThumb >= ThumbIntervalMs)
                 {
                     lastThumb = now;
                     var jpeg = ScreenCapture.Capture(ThumbWidth, 50, out var hash);
                     // ecrã parado: não reenvia (exceto a cada 30 s, para o caso de o professor ter entrado agora)
-                    var same = hash != null && _lastThumbHash != null && hash.AsSpan().SequenceEqual(_lastThumbHash);
+                    var same = hash != null && _lastThumbHash != null && hash.SequenceEqual(_lastThumbHash);
                     if (jpeg != null && (!same || now - lastForcedThumb > 30000))
                     {
                         TrySendFrame(Thumb, jpeg);

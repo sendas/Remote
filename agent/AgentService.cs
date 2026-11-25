@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.ServiceProcess;
 
 namespace ClassroomAgent;
@@ -41,7 +41,7 @@ public sealed class AgentService : ServiceBase
 
     private void Loop()
     {
-        var exe = Environment.ProcessPath!;
+        var exe = Compat.ExePath;
         while (!_stopping)
         {
             try

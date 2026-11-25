@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Drawing;
 using System.Text.Json.Nodes;
 
@@ -42,14 +42,14 @@ internal sealed class AgentApp : ApplicationContext
 
         _user = CurrentUser();
         _client = new AgentClient(cfg, () => _user);
-        _client.Command += n => _ui.BeginInvoke(() => OnCommand(n));
+        _client.Command += n => _ui.BeginInvoke((Action)(() => OnCommand(n)));
         _client.ShareFrame += OnShareFrame;
-        _client.ConnectionChanged += up => _ui.BeginInvoke(() =>
+        _client.ConnectionChanged += up => _ui.BeginInvoke((Action)(() =>
         {
             _disconnectedSince = up ? null : DateTime.UtcNow;
             _tray.Text = up ? "Sala de Aula — ligado ao professor" : "Sala de Aula — sem ligação ao servidor";
             if (!up) SetIndicator(false);
-        });
+        }));
         _client.Start();
 
         _timer = new System.Windows.Forms.Timer { Interval = 500 };
@@ -171,7 +171,7 @@ internal sealed class AgentApp : ApplicationContext
         // corre na thread de rede: guarda só a imagem mais recente e agenda um único desenho
         Volatile.Write(ref _pendingFrame, jpeg);
         if (Interlocked.Exchange(ref _frameScheduled, 1) == 1) return;
-        _ui.BeginInvoke(() =>
+        _ui.BeginInvoke((Action)(() =>
         {
             Interlocked.Exchange(ref _frameScheduled, 0);
             var data = Interlocked.Exchange(ref _pendingFrame, null);
@@ -183,7 +183,7 @@ internal sealed class AgentApp : ApplicationContext
                 foreach (var f in _broadcast) f.ShowFrame(new Bitmap(img));
             }
             catch { /* frame corrompido: ignora */ }
-        });
+        }));
     }
 
     // ------------------------------------------------------------ mensagens

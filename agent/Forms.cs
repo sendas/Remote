@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using static ClassroomAgent.Native;
 
 namespace ClassroomAgent;
@@ -134,7 +134,10 @@ internal sealed class MessageForm : Form
         TextBox? reply = null;
         if (allowReply)
         {
-            reply = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Escreve aqui a tua resposta (opcional)", MaxLength = 2000 };
+            reply = new TextBox { Dock = DockStyle.Fill, MaxLength = 2000 };
+#if NET
+            reply.PlaceholderText = "Escreve aqui a tua resposta (opcional)";
+#endif
             layout.Controls.Add(reply);
         }
         else layout.Controls.Add(new Label { AutoSize = true });

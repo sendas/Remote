@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace ClassroomAgent;
 
@@ -31,7 +31,7 @@ public sealed class AgentConfig
             // "SALA12-PC05" -> "SALA12"
             var n = Environment.MachineName;
             var i = n.LastIndexOf('-');
-            cfg.Room = i > 0 ? n[..i] : "";
+            cfg.Room = i > 0 ? n.Substring(0, i) : "";
         }
         return cfg;
     }
@@ -50,8 +50,8 @@ internal static class Log
             lock (Gate)
             {
                 if (File.Exists(p) && new FileInfo(p).Length > 2_000_000)
-                    File.Move(p, p + ".old", true);
-                File.AppendAllText(p, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{Environment.ProcessId}] {msg}{Environment.NewLine}");
+                    { File.Delete(p + ".old"); File.Move(p, p + ".old"); }
+                File.AppendAllText(p, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{Compat.Pid}] {msg}{Environment.NewLine}");
             }
         }
         catch { /* nunca falhar por causa do log */ }

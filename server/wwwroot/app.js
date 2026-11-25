@@ -9,7 +9,7 @@
     ws: null,
     agents: new Map(),       // id -> {info, el, imgUrl}
     selected: new Set(),
-    room: "",
+    room: (() => { try { return localStorage.getItem("room") || ""; } catch { return ""; } })(),
     viewing: null,           // id do PC aberto em grande
     viewerUrl: null,
     share: null,             // {stream, timer, targets:Set}
@@ -94,7 +94,8 @@
     send({ type: "cmd", action, targets: [...targets], ...extra });
   }
   function sendPrefs() {
-    send({ type: "prefs", thumbMinIntervalMs: parseInt($("#netMode").value, 10) });
+    // o servidor só envia miniaturas da sala escolhida (e os PCs das outras salas param de as enviar)
+    send({ type: "prefs", thumbMinIntervalMs: parseInt($("#netMode").value, 10), room: state.room || null });
   }
   $("#netMode").addEventListener("change", sendPrefs);
 
@@ -149,6 +150,9 @@
     }
   }
 
+  // ordenação "natural": PC2 antes de PC10, Sala 9 antes de Sala 13
+  const natural = (a, b) => a.localeCompare(b, "pt", { numeric: true, sensitivity: "base" });
+
   // ------------------------------------------------------------------ grelha de PCs
   function upsertAgent(info) {
     let a = state.agents.get(info.id);
@@ -180,7 +184,7 @@
   function insertSorted(el, info) {
     const grid = $("#grid");
     const key = (info.hostname || info.id).toLowerCase();
-    const after = [...grid.children].find((c) => c.dataset.key > key);
+    const after = [...grid.children].find((c) => natural(c.dataset.key, key) > 0);
     el.dataset.key = key;
     grid.insertBefore(el, after || null);
   }
@@ -204,10 +208,10 @@
 
   function refresh() {
     // salas
-    const rooms = [...new Set([...state.agents.values()].map((a) => a.info.room).filter(Boolean))].sort();
+    const rooms = [...new Set([...state.agents.values()].map((a) => a.info.room).filter(Boolean))].sort(natural);
     const sel = $("#roomFilter");
-    const cur = sel.value;
-    const opts = ["", ...rooms];
+    const cur = state.room;
+    const opts = ["", ...rooms, ...(cur && !rooms.includes(cur) ? [cur] : [])];
     if (sel.options.length !== opts.length || opts.some((r, i) => sel.options[i].value !== r)) {
       sel.innerHTML = "";
       for (const r of opts) sel.add(new Option(r || "Todas", r));
@@ -228,7 +232,13 @@
     if (state.share) $("#shareStopBtn").textContent = `⏹ Parar partilha (${state.share.targets.size} PCs)`;
   }
 
-  $("#roomFilter").addEventListener("change", (e) => { state.room = e.target.value; refresh(); });
+  $("#roomFilter").addEventListener("change", (e) => {
+    state.room = e.target.value;
+    try { localStorage.setItem("room", state.room); } catch {}
+    state.selected.clear();
+    sendPrefs();
+    refresh();
+  });
 
   function toggleSelect(id, additive) {
     if (!additive) {

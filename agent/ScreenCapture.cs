@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Security.Cryptography;
@@ -62,11 +62,9 @@ internal static class ScreenCapture
         var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
         try
         {
-            unsafe
-            {
-                var span = new ReadOnlySpan<byte>((void*)data.Scan0, data.Stride * data.Height);
-                return SHA1.HashData(span);
-            }
+            var bytes = new byte[data.Stride * data.Height];
+            System.Runtime.InteropServices.Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+            return Compat.Sha1(bytes);
         }
         finally { bmp.UnlockBits(data); }
     }

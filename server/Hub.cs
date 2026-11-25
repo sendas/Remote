@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -103,7 +103,7 @@ public sealed class Hub
                 var key = (kind == Thumb ? "t:" : "f:") + agent.Id;
                 if (kind == Thumb) agent.LastThumbPacket = packet;
                 foreach (var t in TeachersFor(agent, kind == Full))
-                    if (kind == Full || t.WantsThumb(agent.Id))
+                    if (kind == Full || (t.ViewsRoom(agent) && t.WantsThumb(agent.Id)))
                         t.SendFrame(key, packet);
                 return;
             }
@@ -160,6 +160,7 @@ public sealed class Hub
 
         _log.LogInformation("Agente ligado: {Id} ({User}) sala {Room} de {Ip}", a.Id, a.User, a.Room, a.RemoteIp);
         BroadcastToTeachers(a, new { type = "agentJoined", agent = a.Describe() });
+        RefreshThumbs(a);
         return true;
     }
 
@@ -211,6 +212,7 @@ public sealed class Hub
         var t = new TeacherConnection(ws, ip, session);
         var writer = t.WriterLoop();
         lock (_gate) _teachers[t.ConnId] = t;
+        RefreshThumbs();
         _audit.Write(t.Username, "consola-ligada", ip);
 
         t.SendJson(new
@@ -245,6 +247,7 @@ public sealed class Hub
             StopWatching(t, a);
         }
         _audit.Write(t.Username, "consola-desligada", ip);
+        RefreshThumbs();
         t.Abort();
         await writer;
     }
@@ -259,6 +262,12 @@ public sealed class Hub
         {
             // -1 = sem miniaturas, 0 = todas, >0 = no máximo uma por PC a cada N ms
             t.ThumbMinIntervalMs = Math.Clamp(n["thumbMinIntervalMs"]?.GetValue<int>() ?? 0, -1, 600_000);
+            var room = n["room"]?.GetValue<string>();
+            t.RoomFilter = string.IsNullOrWhiteSpace(room) ? null : room;
+            // envia já as últimas miniaturas da sala escolhida, para a grelha não ficar vazia
+            foreach (var a in SnapshotAgents().Where(t.ViewsRoom))
+                if (a.LastThumbPacket is { } p) t.SendFrame("t:" + a.Id, p);
+            RefreshThumbs();
             return;
         }
         if (mtype != "cmd") return;
@@ -350,6 +359,23 @@ public sealed class Hub
                 n["type"] = "input";
                 a0.SendJson(n);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Liga/desliga o envio de miniaturas em cada PC conforme haja (ou não) uma consola a ver a sala dele.
+    /// Com centenas de PCs, evita que salas que ninguém está a ver gastem rede e CPU.
+    /// </summary>
+    private void RefreshThumbs(AgentConnection? only = null)
+    {
+        List<TeacherConnection> teachers;
+        lock (_gate) teachers = _teachers.Values.ToList();
+        foreach (var a in only != null ? new List<AgentConnection> { only } : SnapshotAgents())
+        {
+            var on = teachers.Any(t => t.ViewsRoom(a));
+            if (a.ThumbsOn == on) continue;
+            a.ThumbsOn = on;
+            a.SendJson(new { type = "thumbs", on });
         }
     }
 

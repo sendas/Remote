@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -135,6 +135,9 @@ public sealed class AgentConnection : Connection
     /// <summary>Última miniatura recebida (enviada logo a professores que abram a consola depois).</summary>
     public byte[]? LastThumbPacket { get; set; }
 
+    /// <summary>Se o agente deve enviar miniaturas (só quando algum professor está a ver a sala dele).</summary>
+    public bool? ThumbsOn { get; set; }
+
     /// <summary>Cabeçalho binário pré-calculado para reencaminhar imagens deste agente aos professores.</summary>
     public byte[] IdBytes { get; set; } = Array.Empty<byte>();
 
@@ -163,6 +166,13 @@ public sealed class TeacherConnection : Connection
 
     /// <summary>Intervalo mínimo entre miniaturas do mesmo PC (modo poupança/hotspot). 0 = todas.</summary>
     public int ThumbMinIntervalMs { get; set; }
+
+    /// <summary>Sala que a consola está a mostrar (null = todas). Só recebe miniaturas dessa sala.</summary>
+    public string? RoomFilter { get; set; }
+
+    public bool ViewsRoom(AgentConnection a) =>
+        ThumbMinIntervalMs >= 0 && MayControl(a) &&
+        (RoomFilter == null || string.Equals(RoomFilter, a.Room, StringComparison.OrdinalIgnoreCase));
     private readonly ConcurrentDictionary<string, long> _lastThumb = new();
 
     public bool WantsThumb(string agentId)

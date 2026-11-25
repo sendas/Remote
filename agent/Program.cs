@@ -1,4 +1,4 @@
-using System.ServiceProcess;
+﻿using System.ServiceProcess;
 
 namespace ClassroomAgent;
 
@@ -21,7 +21,9 @@ internal static class Program
             AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Write("Erro fatal: " + e.ExceptionObject);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (_, e) => Log.Write("Erro na interface: " + e.Exception);
+#if NET
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+#endif
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new AgentApp(AgentConfig.Load()));
