@@ -46,14 +46,16 @@ builder.WebHost.ConfigureKestrel(k =>
 builder.Services.AddSingleton(cfg);
 builder.Services.AddSingleton<Audit>();
 builder.Services.AddSingleton<RoomCatalog>();
+builder.Services.AddSingleton<PersistentState>();
 builder.Services.AddSingleton<Hub>();
 // parar o serviço em poucos segundos, mesmo com ligações abertas (consola, agentes)
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(5));
 if (cfg.AgentPipe) builder.Services.AddHostedService<PipeListener>();
-builder.Services.AddSingleton<Updater>();
+builder.Services.AddSingleton(sp => new Updater(sp.GetRequiredService<ServerConfig>(), sp.GetRequiredService<ILogger<Updater>>(), sp));
 if (cfg.AutoUpdate) builder.Services.AddHostedService(sp => sp.GetRequiredService<Updater>());
 
 var app = builder.Build();
+Hub.CleanupOldFiles();
 var log = app.Logger;
 if (firstRun != null) log.LogWarning("{Msg}", firstRun);
 var pin = Certificates.Pin(cert);
@@ -162,30 +164,34 @@ app.MapPost("/api/files", async (HttpContext ctx, Hub hub, Audit audit) =>
 
 app.MapGet("/api/entregas", (HttpContext ctx, Hub hub) =>
 {
-    if (Auth(ctx, hub) == null) return Results.Unauthorized();
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
     var list = Directory.GetDirectories(Hub.CollectDir).OrderByDescending(d => d).Take(30).Select(d => new
     {
         batch = Path.GetFileName(d),
-        files = Directory.GetFiles(d, "*.zip", SearchOption.AllDirectories)
-            .Select(f => new { file = Path.GetRelativePath(Hub.CollectDir, f).Replace('\\', '/'), size = new FileInfo(f).Length })
+        files = Hub.EntregasOf(d).Where(r => Hub.CanSeeEntrega(s.Account, r))
+            .Select(r => new { file = r, size = new FileInfo(Path.Combine(Hub.CollectDir, r)).Length })
             .ToArray(),
-    });
+    }).Where(b => b.files.Length > 0);
     return Results.Json(list);
 });
 
 app.MapGet("/api/entregas/download", (HttpContext ctx, Hub hub, string? file, string? batch) =>
 {
-    if (Auth(ctx, hub) == null) return Results.Unauthorized();
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
     if (!string.IsNullOrEmpty(batch))
     {
-        var zip = Hub.ZipBatch(batch);
+        var zip = Hub.ZipBatch(batch, s.Account);
         if (zip == null) return Results.NotFound();
         var bytes = File.ReadAllBytes(zip);
         File.Delete(zip);
         return Results.File(bytes, "application/zip", $"entregas-{Hub.SafeName(batch)}.zip");
     }
+    var root = Path.GetFullPath(Hub.CollectDir) + Path.DirectorySeparatorChar;
     var full = Path.GetFullPath(Path.Combine(Hub.CollectDir, file ?? ""));
-    if (!full.StartsWith(Path.GetFullPath(Hub.CollectDir)) || !File.Exists(full)) return Results.NotFound();
+    if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(full)) return Results.NotFound();
+    if (!Hub.CanSeeEntrega(s.Account, Path.GetRelativePath(Hub.CollectDir, full))) return Results.StatusCode(403);
     return Results.File(File.OpenRead(full), "application/zip", Path.GetFileName(full));
 });
 

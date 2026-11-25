@@ -18,12 +18,14 @@ public sealed class Updater : BackgroundService
 {
     private readonly ServerConfig _cfg;
     private readonly ILogger<Updater> _log;
+    private readonly IServiceProvider? _sp;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
 
-    public Updater(ServerConfig cfg, ILogger<Updater> log)
+    public Updater(ServerConfig cfg, ILogger<Updater> log, IServiceProvider? sp = null)
     {
         _cfg = cfg;
         _log = log;
+        _sp = sp;
         Http.DefaultRequestHeaders.UserAgent.ParseAdd("SalaViva-Updater");
     }
 
@@ -35,14 +37,25 @@ public sealed class Updater : BackgroundService
         await Task.Delay(TimeSpan.FromSeconds(30), ct).ContinueWith(_ => { });
         while (!ct.IsCancellationRequested)
         {
-            try { await CheckOnce(ct); }
+            try { var msg = await CheckOnce(ct, force: false); _log.LogInformation("Auto-update: {Msg}", msg); }
             catch (Exception ex) { _log.LogWarning("Auto-update: {Msg}", ex.Message); }
             await Task.Delay(TimeSpan.FromMinutes(Math.Clamp(_cfg.UpdateCheckMinutes, 10, 1440)), ct)
                 .ContinueWith(_ => { });
         }
     }
 
-    public async Task<string> CheckOnce(CancellationToken ct = default)
+    /// <summary>Dentro da janela de manutenção (ex.: "20:00-07:00", pode atravessar a meia-noite)?</summary>
+    private bool InWindow()
+    {
+        var parts = (_cfg.UpdateWindow ?? "").Split('-');
+        if (parts.Length != 2 || !TimeSpan.TryParse(parts[0], out var a) || !TimeSpan.TryParse(parts[1], out var b)) return true;
+        var now = DateTime.Now.TimeOfDay;
+        return a <= b ? now >= a && now < b : now >= a || now < b;
+    }
+
+    private bool TeachersOnline() => (_sp?.GetService(typeof(Hub)) as Hub)?.TeacherCount > 0;
+
+    public async Task<string> CheckOnce(CancellationToken ct = default, bool force = true)
     {
         var api = _cfg.UpdateReleaseApi;
         using var resp = await Http.GetAsync(api, ct);
@@ -58,8 +71,13 @@ public sealed class Updater : BackgroundService
         var updatedAt = (string?)asset["updated_at"] ?? "";
 
         var state = ReadState();
-        if (state.Size == size && state.UpdatedAt == updatedAt)
+        var runningSha = Sha256(Environment.ProcessPath!);
+        // só está "em dia" se a release é a mesma E o programa a correr é mesmo o dessa release
+        // (se uma troca anterior falhou, volta a tentar)
+        if (state.Size == size && state.UpdatedAt == updatedAt && state.ExeSha == runningSha)
             return "Já está na versão mais recente.";
+        if (!force && (!InWindow() || TeachersOnline()))
+            return $"Há versão nova; fica para a janela de manutenção ({_cfg.UpdateWindow}) sem consolas abertas.";
 
         var upd = Path.GetDirectoryName(StateFile)!;
         Directory.CreateDirectory(upd);
@@ -77,13 +95,10 @@ public sealed class Updater : BackgroundService
         var running = Environment.ProcessPath!;
         var webNew = Path.Combine(Path.GetDirectoryName(newExe)!, "wwwroot");
         var webNow = Path.Combine(AppContext.BaseDirectory, "wwwroot");
-        if (Sha256(newExe) == Sha256(running) && SameDir(webNew, webNow))
-        {
-            WriteState(size, updatedAt);
+        var newSha = Sha256(newExe);
+        WriteState(size, updatedAt, newSha);
+        if (newSha == Sha256(running) && SameDir(webNew, webNow))
             return "A versão publicada é igual à atual. Nada a trocar.";
-        }
-
-        WriteState(size, updatedAt);
         if (OperatingSystem.IsWindows())
         {
             ScheduleSwap(Path.GetDirectoryName(newExe)!, Path.GetDirectoryName(running)!);
@@ -144,17 +159,17 @@ public sealed class Updater : BackgroundService
         return Convert.ToHexString(SHA256.HashData(s));
     }
 
-    private sealed record UpdateState(long Size, string UpdatedAt);
+    private sealed record UpdateState(long Size, string UpdatedAt, string? ExeSha = null);
 
     private UpdateState ReadState()
     {
         try { return JsonSerializer.Deserialize<UpdateState>(File.ReadAllText(StateFile)) ?? new(0, ""); }
-        catch { return new(0, ""); }
+        catch { return new(0, "", null); }
     }
 
-    private void WriteState(long size, string updatedAt)
+    private void WriteState(long size, string updatedAt, string exeSha)
     {
-        try { File.WriteAllText(StateFile, JsonSerializer.Serialize(new UpdateState(size, updatedAt))); }
+        try { File.WriteAllText(StateFile, JsonSerializer.Serialize(new UpdateState(size, updatedAt, exeSha))); }
         catch { }
     }
 }

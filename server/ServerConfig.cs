@@ -65,6 +65,8 @@ public sealed class ServerConfig
     /// <summary>Atualização automática do servidor a partir das Releases do GitHub.</summary>
     public bool AutoUpdate { get; set; } = true;
     public int UpdateCheckMinutes { get; set; } = 60;
+    /// <summary>Só se reinicia para atualizar dentro desta janela (hora local), e sem consolas abertas.</summary>
+    public string UpdateWindow { get; set; } = "20:00-07:00";
     public string UpdateReleaseApi { get; set; } = "https://api.github.com/repos/sendas/Remote/releases/tags/auto";
     public string UpdateAssetName { get; set; } = "SalaViva-Servidor.zip";
 

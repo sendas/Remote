@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 
@@ -99,6 +99,17 @@ internal static class Classroom
         Incoming? f;
         lock (Files) Files.TryGetValue(id, out f);
         f?.Stream?.Write(data, 16, data.Length - 16);
+    }
+
+    /// <summary>Ligação caiu a meio de uma receção: fecha e apaga os ficheiros incompletos.</summary>
+    public static void AbortIncoming()
+    {
+        List<Incoming> list;
+        lock (Files) { list = Files.Values.ToList(); Files.Clear(); }
+        foreach (var f in list)
+        {
+            try { f.Stream?.Dispose(); File.Delete(f.Path); } catch { }
+        }
     }
 
     /// <summary>Fecha o ficheiro recebido e devolve o caminho (ou null).</summary>

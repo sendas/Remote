@@ -15,8 +15,6 @@ public sealed partial class Hub
     private const int ChunkSize = 256 * 1024;
     public const long MaxFileBytes = 100L * 1024 * 1024;
 
-    private readonly HashSet<string> _noInternetIds = new(StringComparer.OrdinalIgnoreCase);
-
     public static string FilesDir => Dir("ficheiros");
     public static string CollectDir => Dir("entregas");
 
@@ -90,9 +88,7 @@ public sealed partial class Hub
             case "internetOff":
             case "internetOn":
                 var off = action == "internetOff";
-                lock (_gate)
-                    foreach (var a in targets)
-                        if (off) _noInternetIds.Add(a.Id); else _noInternetIds.Remove(a.Id);
+                foreach (var a in targets) _state.SetNoInternet(a.Id, off);
                 foreach (var a in targets)
                 {
                     a.NoInternet = off;
@@ -244,8 +240,8 @@ public sealed partial class Hub
         {
             a.Collect?.Dispose();
             var batch = SafeName(n["batch"]?.GetValue<string>() ?? "entrega");
-            var sala = SafeName($"{a.School} {a.Room}".Trim());
-            var dir = Path.Combine(CollectDir, batch, sala);
+            // entregas/<recolha>/<escola>/<sala>/<PC - aluno>.zip  (permite filtrar por permissões)
+            var dir = Path.Combine(CollectDir, batch, SafeName(a.School.Length > 0 ? a.School : "_"), SafeName(a.Room.Length > 0 ? a.Room : "_"));
             Directory.CreateDirectory(dir);
             var who = string.IsNullOrEmpty(a.FullUserName) ? a.User.Split('\\').Last() : a.FullUserName;
             var path = Path.Combine(dir, SafeName($"{a.Hostname} - {who}") + ".zip");
@@ -282,13 +278,48 @@ public sealed partial class Hub
         fs.Write(data.Array!, data.Offset + 17, data.Count - 17);
     }
 
-    /// <summary>Zip com todas as entregas de uma recolha (para "Descarregar tudo").</summary>
-    public static string? ZipBatch(string batch)
+    /// <summary>
+    /// Pode este professor ver esta entrega? O caminho relativo é "recolha/escola/sala/ficheiro.zip".
+    /// (Recolhas antigas, "recolha/escola sala/ficheiro.zip", só os administradores veem.)
+    /// </summary>
+    public static bool CanSeeEntrega(TeacherAccount acc, string relPath)
+    {
+        if (acc.IsAdmin) return true;
+        var p = relPath.Replace('\\', '/').Split('/');
+        return p.Length == 4 && acc.CanSee(p[1] == "_" ? "" : p[1], p[2] == "_" ? "" : p[2]);
+    }
+
+    public static IEnumerable<string> EntregasOf(string batchDir) =>
+        Directory.GetFiles(batchDir, "*.zip", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(CollectDir, f).Replace('\\', '/'));
+
+    /// <summary>Zip com as entregas de uma recolha que este professor pode ver (para "Descarregar tudo").</summary>
+    public static string? ZipBatch(string batch, TeacherAccount acc)
     {
         var dir = Path.Combine(CollectDir, SafeName(batch));
         if (!Directory.Exists(dir)) return null;
+        var files = EntregasOf(dir).Where(r => CanSeeEntrega(acc, r)).ToList();
+        if (files.Count == 0) return null;
         var zip = Path.Combine(Path.GetTempPath(), $"entregas-{SafeName(batch)}-{Guid.NewGuid():N}.zip");
-        ZipFile.CreateFromDirectory(dir, zip);
+        using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
+            foreach (var r in files)
+                z.CreateEntryFromFile(Path.Combine(CollectDir, r), r.Substring(r.IndexOf('/') + 1));
         return zip;
+    }
+
+    /// <summary>Apaga ficheiros enviados aos alunos com mais de 7 dias e entregas com mais de 180 dias.</summary>
+    public static void CleanupOldFiles()
+    {
+        void Clean(string root, TimeSpan age)
+        {
+            try
+            {
+                foreach (var d in Directory.GetDirectories(root))
+                    if (DateTime.Now - Directory.GetLastWriteTime(d) > age) Directory.Delete(d, true);
+            }
+            catch { }
+        }
+        Clean(FilesDir, TimeSpan.FromDays(7));
+        Clean(CollectDir, TimeSpan.FromDays(180));
     }
 }

@@ -40,47 +40,85 @@ public sealed partial class Hub
     private readonly object _gate = new();
     private readonly Dictionary<string, AgentConnection> _agents = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TeacherConnection> _teachers = new();
-    /// <summary>Estado de bloqueio sobrevive a reconexões (ex.: aluno desliga o cabo e volta a ligar).</summary>
-    private readonly HashSet<string> _lockedIds = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Bloqueios, Internet cortada e sessões sobrevivem a reconexões e a reinícios do servidor.</summary>
+    private readonly PersistentState _state;
     private readonly ConcurrentDictionary<string, TeacherSession> _sessions = new();
+    private readonly Timer _expiry;
+    private readonly Timer _cleanup;
 
     private readonly RoomCatalog _catalog;
 
-    public Hub(ServerConfig cfg, Audit audit, ILogger<Hub> log, RoomCatalog catalog)
+    public Hub(ServerConfig cfg, Audit audit, ILogger<Hub> log, RoomCatalog catalog, PersistentState state)
     {
         _catalog = catalog;
         _catalog.Changed += OnCatalogChanged;
         _cfg = cfg;
         _audit = audit;
         _log = log;
+        _state = state;
+        // repõe as sessões abertas antes de um reinício (ex.: atualização automática)
+        foreach (var si in _state.Sessions())
+        {
+            var acc = _cfg.Teachers.FirstOrDefault(t => t.Username.Equals(si.Username, StringComparison.OrdinalIgnoreCase));
+            if (acc != null) _sessions[si.Token] = new TeacherSession(si.Token, acc, si.Expires);
+        }
+        _expiry = new Timer(_ => ExpireTimedLocks(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+        _cleanup = new Timer(_ => CleanupOldFiles(), null, TimeSpan.FromHours(24), TimeSpan.FromHours(24));
+    }
+
+    /// <summary>Bloqueios temporizados que acabaram: o agente já desbloqueou sozinho; atualiza a consola.</summary>
+    private void ExpireTimedLocks()
+    {
+        try
+        {
+            var ids = _state.TakeExpiredLocks();
+            foreach (var a in SnapshotAgents().Where(a => ids.Contains(a.Id, StringComparer.OrdinalIgnoreCase)))
+            {
+                a.Locked = false;
+                BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
+            }
+        }
+        catch { }
     }
 
     // ---------------------------------------------------------------- sessões de professor
 
     public TeacherSession? Login(string username, string password)
     {
-        var acc = _cfg.Teachers.FirstOrDefault(t =>
+        TeacherAccount? acc;
+        lock (_cfg) acc = _cfg.Teachers.FirstOrDefault(t =>
             string.Equals(t.Username, username, StringComparison.OrdinalIgnoreCase));
         // compara sempre algo, para não revelar por tempo de resposta se o utilizador existe
         var ok = PasswordHasher.Verify(password, acc?.PasswordHash ?? PasswordHasher.Hash("x")) && acc != null;
         if (!ok) return null;
         var s = new TeacherSession(ServerConfig.RandomToken(32), acc!, DateTimeOffset.UtcNow.AddHours(_cfg.SessionHours));
         _sessions[s.Token] = s;
+        _state.AddSession(new PersistentState.SessionInfo(s.Token, s.Username, s.Expires));
         return s;
     }
 
     public TeacherSession? ValidateToken(string? token)
     {
         if (token == null || !_sessions.TryGetValue(token, out var s)) return null;
-        if (s.Expires < DateTimeOffset.UtcNow || !_cfg.Teachers.Contains(s.Account))
+        bool exists;
+        lock (_cfg) exists = _cfg.Teachers.Contains(s.Account);
+        if (s.Expires < DateTimeOffset.UtcNow || !exists)
         {
             _sessions.TryRemove(token, out _);
+            _state.RemoveSessions(x => x.Token == token);
             return null;
         }
         return s;
     }
 
-    public void Logout(string token) => _sessions.TryRemove(token, out _);
+    /// <summary>Quantas consolas de professor estão abertas agora (o auto-update espera que seja 0).</summary>
+    public int TeacherCount { get { lock (_gate) return _teachers.Count; } }
+
+    public void Logout(string token)
+    {
+        _sessions.TryRemove(token, out _);
+        _state.RemoveSessions(x => x.Token == token);
+    }
 
     // ---------------------------------------------------------------- utilizadores (gestão na consola)
 
@@ -142,6 +180,7 @@ public sealed partial class Hub
         }
         foreach (var k in _sessions.Where(kv => kv.Value.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList())
             _sessions.TryRemove(k, out _);
+        _state.RemoveSessions(x => x.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
         _audit.Write(by, "utilizador-apagado", username);
         Reconnect(username);
         return null;
@@ -264,7 +303,7 @@ public sealed partial class Hub
         {
             _agents.TryGetValue(a.Id, out old);
             _agents[a.Id] = a;
-            a.Locked = _lockedIds.Contains(a.Id);
+            a.Locked = _state.GetLock(a.Id) != null;
         }
         old?.Abort(); // PC com o mesmo nome ligou outra vez: a ligação antiga morreu
 
@@ -277,10 +316,14 @@ public sealed partial class Hub
             failsafeUnlockMinutes = _cfg.AgentFailsafeUnlockMinutes,
         });
         // repõe o bloqueio se o aluno tinha sido bloqueado antes de perder a ligação
-        a.SendJson(a.Locked ? new { type = "lock", text = (string?)null } : new { type = "unlock", text = (string?)null });
+        var li = _state.GetLock(a.Id);
+        if (li != null) a.SendJson(new { type = "lock", text = li.Text, color = li.Color, seconds = li.SecondsLeft });
+        else a.SendJson(new { type = "unlock", text = (string?)null });
 
         _log.LogInformation("Agente ligado: {Id} ({User}) sala {Room} de {Ip}", a.Id, a.User, a.Room, a.RemoteIp);
-        lock (_gate) a.NoInternet = _noInternetIds.Contains(a.Id);
+        a.NoInternet = _state.NoInternet(a.Id);
+        // envia sempre o estado, para o PC e a consola nunca ficarem em desacordo
+        if (!a.NoInternet) a.SendJson(new { type = "internet", on = true });
         if (a.NoInternet) a.SendJson(new { type = "internet", on = false });
         BroadcastToTeachers(a, new { type = "agentJoined", agent = a.Describe() });
         ResolveName(a);
@@ -343,6 +386,11 @@ public sealed partial class Hub
                 });
                 break;
             case "pong":
+                break;
+            case "unlocked":
+                _state.SetLock(a.Id, null);
+                a.Locked = false;
+                BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
                 break;
             case "chat":
                 var ctext = Clean(n["text"]?.GetValue<string>(), 2000, allowNewlines: true);
@@ -452,9 +500,12 @@ public sealed partial class Hub
             case "lock":
             case "unlock":
                 var lockIt = action == "lock";
-                lock (_gate)
-                    foreach (var a in targets)
-                        if (lockIt) _lockedIds.Add(a.Id); else _lockedIds.Remove(a.Id);
+                var lockSecs = Math.Clamp(n["seconds"]?.GetValue<int>() ?? 0, 0, 14400);
+                var lockInfo = lockIt
+                    ? new PersistentState.LockInfo(Clean(n["text"]?.GetValue<string>(), 300), Clean(n["color"]?.GetValue<string>(), 7),
+                        lockSecs > 0 ? DateTimeOffset.UtcNow.AddSeconds(lockSecs) : null)
+                    : null;
+                foreach (var a in targets) _state.SetLock(a.Id, lockInfo);
                 foreach (var a in targets)
                 {
                     a.Locked = lockIt;

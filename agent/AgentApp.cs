@@ -61,7 +61,7 @@ internal sealed class AgentApp : ApplicationContext
         {
             _disconnectedSince = up ? null : DateTime.UtcNow;
             _tray.Text = up ? "SalaViva — ligado ao professor" : "SalaViva — sem ligação ao servidor";
-            if (!up) SetIndicator(false);
+            if (!up) { SetIndicator(false); Classroom.AbortIncoming(); }
         }));
         _client.Start();
 
@@ -87,7 +87,7 @@ internal sealed class AgentApp : ApplicationContext
             if (_lockUntil is { } until)
             {
                 var left = until - DateTime.Now;
-                if (left <= TimeSpan.Zero) { Unlock(); }
+                if (left <= TimeSpan.Zero) { Unlock(); _client.Post(new { type = "unlocked" }); }
                 else foreach (var f in _lock) f.SetCountdown(left);
             }
             if (_lock != null)
