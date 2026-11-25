@@ -16,7 +16,7 @@ if (-not (Test-Path $script)) { throw "Não encontro $script. Corre primeiro .\p
 
 Write-Host "A tarefa vai correr como: $Conta" -ForegroundColor Cyan
 Write-Host "Vai abrir uma janela a pedir a palavra-passe dessa conta." -ForegroundColor Cyan
-$cred = Get-Credential -UserName $Conta -Message 'Palavra-passe da conta que corre a instalação (fica guardada pelo Windows na tarefa)'
+$cred = Get-Credential $Conta
 if (-not $cred) { throw 'Cancelado.' }
 $pw = $cred.GetNetworkCredential().Password
 $tr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`""
