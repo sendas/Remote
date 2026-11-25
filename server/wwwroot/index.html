@@ -169,6 +169,22 @@
     <h2>📣 Aviso no ecrã</h2>
     <p class="muted" data-targets></p>
     <label>Texto <input name="text" maxlength="300" required value="Faltam poucos minutos!"></label>
+    <label>Estilo
+      <select name="style" id="noticeStyle">
+        <option value="banner">Faixa no topo</option>
+        <option value="corner">Notificação num canto</option>
+        <option value="center">Janela ao centro</option>
+        <option value="fullscreen">Ecrã inteiro</option>
+      </select>
+    </label>
+    <label id="cornerWrap" hidden>Canto
+      <select name="corner">
+        <option value="br">Inferior direito</option>
+        <option value="bl">Inferior esquerdo</option>
+        <option value="tr">Superior direito</option>
+        <option value="tl">Superior esquerdo</option>
+      </select>
+    </label>
     <label>Cor <span class="swatches" data-swatches></span></label>
     <input type="hidden" name="color" value="#4f6bff">
     <label>Contagem decrescente

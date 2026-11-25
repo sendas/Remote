@@ -369,6 +369,7 @@
       case "notice": return openDialog("#noticeDialog", ids, (f) => {
         const endAction = f.get("endAction") || "";
         cmd("notice", ids, { text: f.get("text"), color: f.get("color"), seconds: +f.get("seconds"),
+          style: f.get("style") || "banner", corner: f.get("corner") || "br",
           closable: f.get("closable") === "on", endAction,
           endSeconds: endAction === "lock" ? (+(f.get("endMinutes") || 0)) * 60 : 0 });
         toast(`\u{1F4E3} Aviso em ${ids.size} PC(s)`);
@@ -432,6 +433,7 @@
   }
   document.addEventListener("change", (e) => {
     if (e.target.id === "endAction") $("#endLockWrap").hidden = e.target.value !== "lock";
+    if (e.target.id === "noticeStyle") $("#cornerWrap").hidden = e.target.value !== "corner";
   });
   $("#lockPresets").addEventListener("click", (e) => {
     const b = e.target.closest(".chip");

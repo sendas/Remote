@@ -26,7 +26,7 @@ ws.onmessage = (ev) => {
   if (m.type === "message" && m.allowReply) setTimeout(() => ws.send(JSON.stringify({ type: "reply", msgId: m.id, text: "Recebido, professor!" })), 500);
   if (m.type === "procs") ws.send(JSON.stringify({ type: "procs", list: [{ pid: 101, name: "chrome", title: "YouTube - Google Chrome" }, { pid: 202, name: "WINWORD", title: "Trabalho.docx - Word" }] }));
   if (m.type === "chat") setTimeout(() => ws.send(JSON.stringify({ type: "chat", text: "Obrigado, professor!" })), 400);
-  if (m.type === "notice") console.log(`[${name}] aviso: ${m.text} (${m.color}, ${m.seconds}s)`);
+  if (m.type === "notice") console.log(`[${name}] aviso estilo=${m.style} canto=${m.corner} fechar=${m.closable} fim=${m.endAction} (${m.text})`);
   if (m.type === "minimize") console.log(`[${name}] minimizar tudo`);
   if (m.type === "mute") console.log(`[${name}] som ${m.on ? "off" : "on"}`);
   if (m.type === "lock") console.log(`[${name}] bloqueado cor=${m.color} seconds=${m.seconds}`);

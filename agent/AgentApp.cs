@@ -306,10 +306,12 @@ internal sealed class AgentApp : ApplicationContext
         var color = ParseColor(n["color"]?.GetValue<string>()) ?? Color.FromArgb(79, 107, 255);
         var secs = n["seconds"]?.GetValue<int>() ?? 0;
         var closable = n["closable"]?.GetValue<bool>() ?? true;
+        var style = n["style"]?.GetValue<string>() ?? "banner";
+        var corner = n["corner"]?.GetValue<string>() ?? "br";
         var endAction = n["endAction"]?.GetValue<string>() ?? (n["lockAtEnd"]?.GetValue<bool>() == true ? "lock" : "");
         var endSeconds = n["endSeconds"]?.GetValue<int>() ?? 0;
         _notices.RemoveAll(f => { if (f.Id == id) { f.Close(); return true; } return false; });
-        var form = new NoticeForm(id, text, color, secs, closable);
+        var form = new NoticeForm(id, text, color, secs, closable, style, corner);
         if (secs > 0 && endAction.Length > 0)
             form.Ended += _ => RunEndAction(endAction, text, color, endSeconds);
         form.FormClosed += (_, _) => _notices.Remove(form);

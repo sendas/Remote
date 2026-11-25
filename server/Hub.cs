@@ -512,6 +512,8 @@ public sealed class Hub
                     color = Clean(n["color"]?.GetValue<string>(), 7),
                     seconds = Math.Clamp(n["seconds"]?.GetValue<int>() ?? 0, 0, 7200),
                     closable = n["closable"]?.GetValue<bool>() ?? true,
+                    style = Clean(n["style"]?.GetValue<string>(), 12),
+                    corner = Clean(n["corner"]?.GetValue<string>(), 2),
                     endAction = Clean(n["endAction"]?.GetValue<string>(), 12),
                     endSeconds = Math.Clamp(n["endSeconds"]?.GetValue<int>() ?? 0, 0, 14400),
                 };

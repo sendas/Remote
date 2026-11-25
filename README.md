@@ -187,7 +187,7 @@ reinicia-se sozinho (agenda uma tarefa que para o serviço, troca o executável 
 
 ## Avisos, contagens e bloqueios temporizados
 
-- **📣 Aviso no ecrã**: faixa com cor à escolha e contagem decrescente. Desmarca "O aluno pode fechar o aviso"
+- **📣 Aviso no ecrã**: em quatro estilos — **faixa no topo**, **notificação num canto** (à escolha), **janela ao centro** ou **ecrã inteiro** — com cor à escolha e contagem decrescente. Desmarca "O aluno pode fechar o aviso"
   para a tornar persistente (sempre por cima, sem botão de fechar). Em "Quando a contagem acabar" escolhes a
   ação: nada, **bloquear o PC** (com a duração que quiseres) ou **terminar a sessão**.
 - **🔒 Bloquear**: além de "até eu desbloquear", podes bloquear **durante X minutos** — o ecrã de bloqueio mostra
