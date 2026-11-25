@@ -43,8 +43,9 @@ if (-not (Get-Service $svc -ErrorAction SilentlyContinue)) {
 sc.exe failure $svc reset= 86400 actions= restart/5000/restart/5000/restart/30000 | Out-Null
 
 # Firewall: abre a porta (restringe depois às VLANs dos alunos/professores, se quiseres)
-Get-NetFirewallRule -DisplayName 'Sala de Aula (servidor)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-New-NetFirewallRule -DisplayName 'Sala de Aula (servidor)' -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow | Out-Null
+# (netsh funciona em todas as versões do Windows Server; Get-NetFirewallRule nem sempre existe)
+netsh advfirewall firewall delete rule name="Sala de Aula (servidor)" 2>&1 | Out-Null
+netsh advfirewall firewall add rule name="Sala de Aula (servidor)" dir=in action=allow protocol=TCP localport=$Port | Out-Null
 
 Start-Service $svc
 
