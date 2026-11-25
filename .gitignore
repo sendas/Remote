@@ -1,0 +1,7 @@
+bin/
+obj/
+publish/
+*.pfx
+server/classroom-server.json
+server/data/
+node_modules/

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sala de Aula</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============================ login ============================ -->
+<section id="login" class="login">
+  <form id="loginForm" class="card login-card" autocomplete="on">
+    <h1>Sala de Aula</h1>
+    <p class="muted">Consola do professor</p>
+    <label>Utilizador <input name="username" autocomplete="username" required></label>
+    <label>Palavra-passe <input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="primary">Entrar</button>
+    <p id="loginError" class="error" role="alert"></p>
+  </form>
+</section>
+
+<!-- ============================ consola ============================ -->
+<section id="console" class="console" hidden>
+  <header class="topbar">
+    <div class="brand">Sala de Aula</div>
+    <label class="room">Sala
+      <select id="roomFilter"><option value="">Todas</option></select>
+    </label>
+    <label class="room">Rede
+      <select id="netMode" title="Em hotspot, reduz os dados recebidos">
+        <option value="0">Normal</option>
+        <option value="10000">Poupança (hotspot)</option>
+        <option value="-1">Sem miniaturas</option>
+      </select>
+    </label>
+    <span id="status" class="pill">A ligar…</span>
+    <span class="spacer"></span>
+    <span id="who" class="muted"></span>
+    <button id="logoutBtn" class="ghost">Sair</button>
+  </header>
+
+  <div class="toolbar" role="toolbar">
+    <button id="selAll">Selecionar todos</button>
+    <button id="selNone">Limpar seleção</button>
+    <span id="selCount" class="muted">0 selecionados</span>
+    <span class="sep"></span>
+    <button id="lockBtn" data-needs-sel>🔒 Bloquear</button>
+    <button id="unlockBtn" data-needs-sel>🔓 Desbloquear</button>
+    <button id="msgBtn" data-needs-sel>💬 Mensagem</button>
+    <button id="urlBtn" data-needs-sel>🌐 Abrir link</button>
+    <span class="sep"></span>
+    <button id="shareBtn" data-needs-sel class="primary">📺 Partilhar o meu ecrã</button>
+    <button id="shareStopBtn" hidden class="danger">⏹ Parar partilha</button>
+    <span class="sep"></span>
+    <button id="logoffBtn" data-needs-sel>Terminar sessão</button>
+    <button id="rebootBtn" data-needs-sel>Reiniciar</button>
+    <button id="shutdownBtn" data-needs-sel class="danger">Desligar</button>
+  </div>
+
+  <main class="main">
+    <div id="grid" class="grid" aria-live="polite"></div>
+    <p id="empty" class="empty muted">Nenhum computador ligado. Confirma que o agente está instalado nos PCs dos alunos e que a VLAN dos alunos consegue chegar ao servidor.</p>
+
+    <aside class="side">
+      <h2>Mensagens</h2>
+      <ol id="chat" class="chat"></ol>
+    </aside>
+  </main>
+</section>
+
+<!-- ============================ diálogos ============================ -->
+<dialog id="msgDialog">
+  <form method="dialog" class="dlg">
+    <h2>Enviar mensagem</h2>
+    <p class="muted" id="msgTargets"></p>
+    <label>Título <input name="title" maxlength="120" value="Aviso do professor"></label>
+    <label>Mensagem <textarea name="text" rows="5" maxlength="4000" required></textarea></label>
+    <label class="check"><input type="checkbox" name="allowReply" checked> Permitir resposta</label>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Cancelar</button>
+      <button value="ok" class="primary">Enviar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="urlDialog">
+  <form method="dialog" class="dlg">
+    <h2>Abrir link nos PCs selecionados</h2>
+    <label>Endereço <input name="url" type="url" placeholder="https://" required></label>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Cancelar</button>
+      <button value="ok" class="primary">Abrir</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="viewer" class="viewer">
+  <div class="viewer-bar">
+    <strong id="viewerTitle"></strong>
+    <label class="check"><input type="checkbox" id="controlToggle"> Controlo remoto (rato e teclado)</label>
+    <span class="spacer"></span>
+    <button id="viewerLock">🔒 Bloquear</button>
+    <button id="viewerMsg">💬 Mensagem</button>
+    <button id="viewerClose" class="primary">Fechar</button>
+  </div>
+  <div class="viewer-stage">
+    <img id="viewerImg" alt="Ecrã do aluno" tabindex="0" draggable="false">
+    <p id="viewerWait" class="muted">A receber imagem…</p>
+  </div>
+</dialog>
+
+<video id="shareVideo" hidden muted playsinline></video>
+<canvas id="shareCanvas" hidden></canvas>
+
+<script src="keys.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

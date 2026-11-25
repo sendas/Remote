@@ -1,0 +1,192 @@
+using System.Collections.Concurrent;
+using System.Net;
+using ClassroomServer;
+using Microsoft.Extensions.FileProviders;
+
+// ------------------------------------------------------------------ comandos de linha
+if (args.Length > 0 && !args[0].StartsWith("--"))
+    return Cli.Run(args);
+
+var cfg = ServerConfig.LoadOrCreate(out var firstRun);
+var cert = Certificates.Load(cfg);
+
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
+builder.Host.UseWindowsService(o => o.ServiceName = "ClassroomServer");
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.Listen(IPAddress.Any, cfg.Port, l => l.UseHttps(cert));
+    k.Limits.MaxRequestBodySize = 64 * 1024;
+});
+builder.Services.AddSingleton(cfg);
+builder.Services.AddSingleton<Audit>();
+builder.Services.AddSingleton<Hub>();
+
+var app = builder.Build();
+var log = app.Logger;
+if (firstRun != null) log.LogWarning("{Msg}", firstRun);
+var pin = Certificates.Pin(cert);
+File.WriteAllText(Path.Combine(ServerConfig.DataDir, "certificado-pin.txt"), pin);
+log.LogInformation("Consola do professor: https://{Host}:{Port}/", Dns.GetHostName(), cfg.Port);
+log.LogInformation("CertificatePin para os agentes: {Pin}", pin);
+
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
+
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
+    ctx.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; img-src 'self' blob: data:; connect-src 'self' wss: ws:; style-src 'self'; script-src 'self'";
+    await next();
+});
+
+var web = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot"));
+app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = web });
+app.UseStaticFiles(new StaticFileOptions { FileProvider = web });
+
+// ------------------------------------------------------------------ login (com travão contra força bruta)
+var failures = new ConcurrentDictionary<string, (int Count, DateTimeOffset Until)>();
+
+app.MapPost("/api/login", async (HttpContext ctx, Hub hub, Audit audit) =>
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "?";
+    if (failures.TryGetValue(ip, out var f) && f.Until > DateTimeOffset.UtcNow)
+        return Results.Json(new { error = "Demasiadas tentativas. Tenta daqui a pouco." }, statusCode: 429);
+
+    LoginRequest? req;
+    try { req = await ctx.Request.ReadFromJsonAsync<LoginRequest>(); } catch { req = null; }
+    if (req == null || string.IsNullOrEmpty(req.Username) || string.IsNullOrEmpty(req.Password))
+        return Results.BadRequest();
+
+    var s = hub.Login(req.Username, req.Password);
+    if (s == null)
+    {
+        var count = (failures.TryGetValue(ip, out var prev) ? prev.Count : 0) + 1;
+        var lockout = count >= 5 ? TimeSpan.FromSeconds(Math.Min(300, 15 * Math.Pow(2, count - 5))) : TimeSpan.Zero;
+        failures[ip] = (count, DateTimeOffset.UtcNow + lockout);
+        audit.Write(req.Username, "login-falhado", ip);
+        await Task.Delay(400);
+        return Results.Json(new { error = "Utilizador ou palavra-passe errados." }, statusCode: 401);
+    }
+    failures.TryRemove(ip, out _);
+    audit.Write(s.Username, "login", ip);
+    return Results.Json(new { token = s.Token, username = s.Username });
+});
+
+app.MapGet("/api/me", (HttpContext ctx, Hub hub) =>
+{
+    var s = hub.ValidateToken(ctx.Request.Headers.Authorization.ToString().Replace("Bearer ", ""));
+    return s == null ? Results.Unauthorized() : Results.Json(new { username = s.Username });
+});
+
+app.MapPost("/api/logout", (HttpContext ctx, Hub hub) =>
+{
+    var token = ctx.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+    hub.Logout(token);
+    return Results.Ok();
+});
+
+// ------------------------------------------------------------------ WebSockets
+app.Map("/ws/agent", async (HttpContext ctx, Hub hub) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    await hub.RunAgent(ws, ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
+});
+
+app.Map("/ws/teacher", async (HttpContext ctx, Hub hub) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+
+    // impede que outra página web abra a consola em nome do professor
+    var origin = ctx.Request.Headers.Origin.ToString();
+    if (origin.Length > 0 && Uri.TryCreate(origin, UriKind.Absolute, out var o) &&
+        !string.Equals(o.Authority, ctx.Request.Host.Value, StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(o.Host, ctx.Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = 403;
+        return;
+    }
+
+    var session = hub.ValidateToken(ctx.Request.Query["token"]);
+    if (session == null) { ctx.Response.StatusCode = 401; return; }
+
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    await hub.RunTeacher(ws, ctx.Connection.RemoteIpAddress?.ToString() ?? "?", session);
+});
+
+app.Run();
+return 0;
+
+internal sealed record LoginRequest(string Username, string Password);
+
+internal static class Cli
+{
+    public static int Run(string[] args)
+    {
+        switch (args[0])
+        {
+            case "set-password" when args.Length == 3:
+            case "add-teacher" when args.Length >= 3:
+            {
+                var cfg = ServerConfig.LoadOrCreate(out var first);
+                if (first != null) Console.WriteLine(first);
+                var t = cfg.Teachers.FirstOrDefault(x => x.Username.Equals(args[1], StringComparison.OrdinalIgnoreCase));
+                if (t == null)
+                {
+                    if (args[0] == "set-password") { Console.Error.WriteLine("Utilizador não existe."); return 1; }
+                    t = new TeacherAccount { Username = args[1] };
+                    cfg.Teachers.Add(t);
+                }
+                t.PasswordHash = PasswordHasher.Hash(args[2]);
+                if (args.Length > 3) t.Rooms = args[3].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+                cfg.Save();
+                Console.WriteLine($"OK: {t.Username}" + (t.Rooms.Count > 0 ? $" (salas: {string.Join(", ", t.Rooms)})" : " (todas as salas)"));
+                return 0;
+            }
+            case "remove-teacher" when args.Length == 2:
+            {
+                var cfg = ServerConfig.LoadOrCreate(out _);
+                var n = cfg.Teachers.RemoveAll(x => x.Username.Equals(args[1], StringComparison.OrdinalIgnoreCase));
+                cfg.Save();
+                Console.WriteLine(n > 0 ? "Removido." : "Não encontrado.");
+                return 0;
+            }
+            case "list-teachers":
+            {
+                var cfg = ServerConfig.LoadOrCreate(out _);
+                foreach (var t in cfg.Teachers)
+                    Console.WriteLine($"{t.Username}\t{(t.Rooms.Count == 0 ? "(todas)" : string.Join(",", t.Rooms))}");
+                return 0;
+            }
+            case "show-pin":
+            {
+                var cfg = ServerConfig.LoadOrCreate(out _);
+                Console.WriteLine(Certificates.Pin(Certificates.Load(cfg)));
+                return 0;
+            }
+            case "show-key":
+            {
+                Console.WriteLine(ServerConfig.LoadOrCreate(out _).EnrollmentKey);
+                return 0;
+            }
+        }
+
+        Console.WriteLine("""
+            ClassroomServer — comandos:
+              (sem argumentos)                        arranca o servidor
+              add-teacher <user> <pass> [sala1,sala2] cria/atualiza professor (sem salas = todas)
+              set-password <user> <pass>              muda palavra-passe
+              remove-teacher <user>
+              list-teachers
+              show-pin                                mostra o CertificatePin para os agentes
+              show-key                                mostra a EnrollmentKey para os agentes
+            """);
+        return 1;
+    }
+}
