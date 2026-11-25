@@ -73,7 +73,7 @@ exit /b 0
 '@ | Set-Content "$Pasta\instalar.cmd" -Encoding ASCII
 
 # ------------------------------------------------------------------ permissões (por SID: funciona em qualquer idioma)
-$dn = ([ADSI]'LDAP://RootDSE').defaultNamingContext
+$dn = [string](([ADSI]'LDAP://RootDSE').defaultNamingContext)
 $dom = [ADSI]"LDAP://$dn"
 $domSid = (New-Object Security.Principal.SecurityIdentifier($dom.objectSid[0], 0)).Value
 # SYSTEM, Administradores, Admins do domínio: total | Computadores do domínio: leitura

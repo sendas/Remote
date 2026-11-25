@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Import-Module GroupPolicy
 
-$dn = ([ADSI]'LDAP://RootDSE').defaultNamingContext
+$dn = [string](([ADSI]'LDAP://RootDSE').defaultNamingContext)
 $dominio = (Get-WmiObject Win32_ComputerSystem).Domain
 
 $gpo = Get-GPO -Name $Nome -ErrorAction SilentlyContinue
