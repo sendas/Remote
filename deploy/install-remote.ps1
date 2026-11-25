@@ -56,7 +56,9 @@ $key = (& "$ServerDir\ClassroomServer.exe" show-key | Select-Object -Last 1).Tri
 $pin = (Get-Content "$ServerDir\data\certificado-pin.txt" | Select-Object -First 1).Trim()
 $cfgSrv = Get-Content "$ServerDir\data\classroom-server.json" -Raw | ConvertFrom-Json
 if (-not $ServerUrl) {
+    # placa com gateway predefinido primeiro (servidores com várias placas de rede)
     $ip = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' |
+        Sort-Object { -not $_.DefaultIPGateway } |
         ForEach-Object { $_.IPAddress } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' -and $_ -notlike '169.254.*' } |
         Select-Object -First 1
     $ServerUrl = "wss://${ip}:$($cfgSrv.Port)/ws/agent"
@@ -98,7 +100,8 @@ sc.exe \\$pc sdset ClassroomAgent 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPW
 sc.exe \\$pc start ClassroomAgent | Out-Null
 
 Start-Sleep 12
-$estado = sc.exe \\$pc query ClassroomAgent | Select-String 'STATE'
+# "4  RUNNING" aparece igual em qualquer idioma do Windows (STATE/ESTADO muda)
+$estado = sc.exe \\$pc query ClassroomAgent | Select-String 'RUNNING|STOPPED|PENDING'
 Write-Host "   $estado"
 
 Passo "Últimas linhas do registo do agente"

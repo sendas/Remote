@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using ClassroomServer;
 using Microsoft.Extensions.FileProviders;
@@ -46,6 +46,8 @@ builder.WebHost.ConfigureKestrel(k =>
 builder.Services.AddSingleton(cfg);
 builder.Services.AddSingleton<Audit>();
 builder.Services.AddSingleton<Hub>();
+// parar o serviço em poucos segundos, mesmo com ligações abertas (consola, agentes)
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(5));
 if (cfg.AgentPipe) builder.Services.AddHostedService<PipeListener>();
 
 var app = builder.Build();
