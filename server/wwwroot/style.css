@@ -110,6 +110,7 @@ label.check input { width: auto; }
 }
 .topbar { position: relative; z-index: 5; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; }
+.app-version { font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 4px; white-space: nowrap; }
 .brand span {
   background: linear-gradient(90deg, var(--coral), var(--amber), var(--teal), var(--blue));
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -246,7 +247,8 @@ dialog::backdrop { background: rgba(10, 12, 24, .5); backdrop-filter: blur(2px);
 @keyframes wave { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
 
 /* menu "Mais" na barra */
-.toolbar .menu-list { right: 0; left: auto; }
+.toolbar .menu-list { left: 0; right: auto; max-height: 70vh; overflow: auto; }
+.toolbar .menu-list.to-left { left: auto; right: 0; }
 /* nome do aluno no cartão */
 .pc .person { font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc .host { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -262,3 +264,22 @@ dialog::backdrop { background: rgba(10, 12, 24, .5); backdrop-filter: blur(2px);
 .entrega-batch h3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .entrega-batch ul { margin: 6px 0 0; padding-left: 18px; }
 .entrega-batch a { color: var(--accent); cursor: pointer; }
+
+/* sistema e instalação */
+.sys-block { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: grid; gap: 8px; }
+.sys-block h3 { margin: 0; }
+.actions.left { justify-content: flex-start; }
+.kv { display: grid; grid-template-columns: 200px 1fr; gap: 4px 12px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.ok { color: var(--ok); } .bad { color: var(--danger); }
+.st-online { color: var(--ok); font-weight: 700; }
+.st-seen { color: var(--accent); }
+.st-never { color: var(--warn); }
+.report-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.report-summary .chip { cursor: pointer; }
+.report-summary .chip.on { background: var(--accent); color: #fff; }
+
+.settings-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }
+label.inline { display: flex; align-items: center; gap: 6px; font-weight: 400; }
+label.inline input { width: auto; }

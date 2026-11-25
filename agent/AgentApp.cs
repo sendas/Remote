@@ -138,6 +138,7 @@ internal sealed class AgentApp : ApplicationContext
                 case "minimize": MinimizeAll(); break;
                 case "internet": SetInternet(n["on"]?.GetValue<bool>() ?? true); break;
                 case "closeAll": Classroom.CloseAll(_session); break;
+                case "selfUpdate": SelfUpdate(n["path"]?.GetValue<string>() ?? ""); break;
                 case "fileReceived": FileReceived(n["path"]?.GetValue<string>() ?? ""); break;
                 case "collect": _ = Classroom.Collect(_client, n["batch"]?.GetValue<string>() ?? "entrega"); break;
                 case "poll": ShowPoll(n); break;
@@ -331,6 +332,25 @@ internal sealed class AgentApp : ApplicationContext
         form.FormClosed += (_, _) => _notices.Remove(form);
         _notices.Add(form);
         form.Show();
+    }
+
+    /// <summary>
+    /// Há versão nova na partilha: corre o instalador de lá (o mesmo da GPO). Ele para este agente, troca os
+    /// ficheiros e volta a arrancá-lo — demora segundos. Nunca a meio de um bloqueio ou partilha, e no máximo
+    /// uma tentativa a cada 6 horas (para não entrar em ciclo se algo correr mal).
+    /// </summary>
+    private void SelfUpdate(string path)
+    {
+        if (!Program.RunningAsSystem || path.Length == 0 || _lock != null || _broadcast != null) return;
+        var stamp = Path.Combine(AgentConfig.Dir, "ultima-atualizacao.txt");
+        try
+        {
+            if (File.Exists(stamp) && DateTime.UtcNow - File.GetLastWriteTimeUtc(stamp) < TimeSpan.FromHours(6)) return;
+            File.WriteAllText(stamp, DateTime.Now.ToString("s"));
+            Log.Write("A atualizar a partir de " + path);
+            Process.Start(new ProcessStartInfo(path, "--instalar") { UseShellExecute = false, CreateNoWindow = true });
+        }
+        catch (Exception ex) { Log.Write("Atualização: " + ex.Message); }
     }
 
     private void SetInternet(bool on)

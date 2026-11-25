@@ -144,18 +144,36 @@ Atalhos: clique seleciona; **Ctrl/Cmd + clique** seleciona vários; **duplo cliq
    ```
    Estes PCs não se atualizam sozinhos pela GPO (a GPO não os reconhece pelo MAC): repete o comando quando houver versão nova.
 
-## 8. Atualizações automáticas
+## 8. Atualizações e gestão pela consola (⚙️ Sistema e instalação)
 
-- O servidor verifica **de hora a hora** a release do GitHub. Se houver versão nova, atualiza o programa e
-  a consola web e reinicia-se sozinho — **só entre as 20h e as 7h e sem nenhuma consola aberta**, para nunca
-  interromper uma aula (muda-se em `"UpdateWindow"`). O reinício demora cerca de 1 minuto.
-- **Um reinício não estraga a aula:** PCs bloqueados continuam bloqueados (mesmo texto, cor e tempo), a Internet
-  continua cortada onde estava, e os professores não têm de voltar a entrar.
-- Forçar já: `C:\ClassroomServer\ClassroomServer.exe update`
-- Desligar: em `C:\ClassroomServer\data\classroom-server.json`, `"AutoUpdate": false`.
-- **Windows Server 2008 R2:** a ligação ao GitHub precisa de TLS 1.2. Se o comando `update` disser que
-  falhou a ligação, o servidor não consegue atualizar-se sozinho — continua a atualizar com os passos 1 a 3.
-- Os **agentes dos PCs** atualizam-se no arranque seguinte depois de correres o passo 3.
+Menu com o teu nome → **⚙️ Sistema e instalação** (só administradores). No topo da consola vês sempre a
+versão e a data, ex.: `v2.1.0 · 25/11/2026 20:34`.
+
+**Como funcionam as atualizações**
+1. Sempre que há versão nova no GitHub, o **servidor** descarrega-a e instala-a sozinho — só dentro do horário
+   definido (por omissão **20:00–07:00**) e **sem nenhuma consola aberta**, para nunca interromper uma aula.
+2. Ao mesmo tempo renova o **agente na partilha** de instalação.
+3. Cada **PC** compara o seu agente com o da partilha quando se liga ao servidor: se for diferente, atualiza-se
+   sozinho em poucos segundos (sem reiniciar; nunca a meio de um bloqueio ou partilha). Os PCs que estavam
+   desligados de noite atualizam-se quando forem ligados.
+
+**No painel**
+- *Versão, última verificação e resultado* — se aparecer "Falhou a ligação ao GitHub", o servidor não consegue
+  sair para a Internet com TLS 1.2 (limite do Windows 2008 R2): nesse caso atualiza à mão com os passos 1 a 4.
+- *Agentes ligados* — quantos PCs estão na versão atual e quantos estão a atualizar (⟳ no cartão).
+- **Atualizar automaticamente / horário** — liga, desliga ou muda o horário e carrega em *Guardar*.
+- **Verificar agora** — só verifica (instala à noite). **Atualizar já** — instala logo (o servidor reinicia ~1 min).
+
+**Instalar nos PCs pela consola**
+- Uma única vez, no servidor (PowerShell como Administrador, na pasta do agente):
+  ```powershell
+  .\criar-tarefa-instalar.ps1
+  ```
+  Pede a palavra-passe da tua conta de administrador; o Windows guarda-a (a consola nunca a vê).
+- Depois, no painel: **▶ Instalar agora nos PCs ligados**. O relatório aparece por baixo, agrupado
+  (instalado, já tinha, desligado, falta .NET…) — clica num grupo para ver os PCs.
+- Em **🏫 Escolas e salas**, a coluna *Ligados · Com agente* e o botão **👁 PCs** mostram, para cada sala, que
+  PCs estão ligados, quais já têm o agente e quais **nunca apareceram** (os que faltam).
 
 ## 9. Privacidade (RGPD)
 

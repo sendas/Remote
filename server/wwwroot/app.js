@@ -92,6 +92,10 @@
     $("#console").hidden = false;
     try { state.me = await api("/api/me"); } catch { return; }
     $("#who").textContent = state.me.displayName || state.me.username;
+    if (state.me.version) {
+      const d = state.me.buildDate ? new Date(state.me.buildDate) : null;
+      $("#appVersion").textContent = `v${state.me.version}` + (d ? ` · ${d.toLocaleDateString("pt-PT")} ${d.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}` : "");
+    }
     for (const el of $$("[data-admin]")) el.hidden = !state.me.isAdmin;
     $("#zoom").value = store.get("zoom", "240");
     applyZoom();
@@ -109,6 +113,7 @@
     if (act === "password") openPassword();
     if (act === "users") openUsers();
     if (act === "rooms") openRooms();
+    if (act === "system") openSystem();
   });
 
   // ================================================================== WebSocket
@@ -273,7 +278,17 @@
     return "— sem sessão —";
   }
 
-  $("#moreBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#moreMenu").hidden = !$("#moreMenu").hidden; });
+  $("#moreBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const m = $("#moreMenu");
+    m.hidden = !m.hidden;
+    if (m.hidden) return;
+    // abre para o lado onde houver espaço (nunca fica cortado fora da janela)
+    m.classList.remove("to-left");
+    const r = m.getBoundingClientRect();
+    if (r.right > innerWidth - 8) m.classList.add("to-left");
+    if (m.getBoundingClientRect().left < 8) m.classList.remove("to-left");
+  });
 
   // ================================================================== grelha
   function upsertAgent(info) {
@@ -300,7 +315,8 @@
     b.innerHTML = (info.locked ? `<span class="badge lock">🔒 BLOQUEADO</span>` : "") +
       (info.noInternet ? `<span class="badge net">🚫 SEM NET</span>` : "") +
       (info.demo ? `<span class="badge demo">🎬 EM DEMONSTRAÇÃO</span>` : "") +
-      (info.broadcasting ? `<span class="badge share">📺 A VER</span>` : "");
+      (info.broadcasting ? `<span class="badge share">📺 A VER</span>` : "") +
+      (info.outdated ? `<span class="badge" title="Este PC vai atualizar o agente sozinho">⟳</span>` : "");
     placeSorted(a.el);
   }
 
@@ -860,7 +876,10 @@
   let roomsData = null, roomsTab = null;
 
   async function openRooms() {
-    try { roomsData = await api("/api/admin/rooms"); } catch (e) { return toast(e.message); }
+    let res;
+    try { res = await api("/api/admin/rooms"); } catch (e) { return toast(e.message); }
+    roomsData = res.view || res;
+    roomsData.counts = res.counts || {};
     const ids = roomsData.schools.map((s) => s.id);
     for (const f of roomsData.folders) if (!ids.includes(f.school)) { ids.push(f.school); roomsData.schools.push({ id: f.school, name: f.school }); }
     roomsTab = ids[0];
@@ -881,9 +900,11 @@
     $("#roomsBody").innerHTML = rows.length ? rows.map((r) => `<tr data-folder="${esc(r.folder)}">
         <td>${esc(r.folder)} ${r.inAd ? "" : '<span class="tag-ad">(não está no AD)</span>'}</td>
         <td>${r.count || ""}</td>
+        <td>${(() => { const c = roomsData.counts[`${r.school}/${r.folder}`]; return c ? `<span class="st-online">${c.online}</span> · ${c.seen}` : ""; })()}</td>
         <td><input data-f="name" list="roomNames" value="${esc(r.name)}" placeholder="${esc(r.folder)}"></td>
-        <td><input data-f="active" type="checkbox" ${r.active ? "checked" : ""}></td></tr>`).join("")
-      : `<tr><td colspan="4" class="muted">Sem pastas nesta escola.</td></tr>`;
+        <td><input data-f="active" type="checkbox" ${r.active ? "checked" : ""}></td>
+        <td>${r.inAd ? `<button type="button" data-status="${esc(r.folder)}" title="Ver os PCs desta sala">👁 PCs</button>` : ""}</td></tr>`).join("")
+      : `<tr><td colspan="6" class="muted">Sem pastas nesta escola.</td></tr>`;
   }
 
   $("#schoolTabs").addEventListener("click", (e) => {
@@ -907,6 +928,112 @@
     roomsData.folders.find((f) => f.school === roomsTab && f.folder === tr.dataset.folder).active = e.target.checked;
   });
   $("#roomsCancel").addEventListener("click", () => $("#roomsDialog").close());
+
+  // ---------------------------------------------------------- PCs de uma sala (o que falta?)
+  $("#roomsBody").addEventListener("click", (e) => {
+    const f = e.target.closest("[data-status]")?.dataset.status;
+    if (f) openRoomStatus(roomsTab, f);
+  });
+  async function openRoomStatus(school, folder) {
+    let st;
+    try { st = await api(`/api/admin/room-status?school=${encodeURIComponent(school)}&folder=${encodeURIComponent(folder)}`); }
+    catch (e) { return toast(e.message); }
+    $("#rsTitle").textContent = `${schoolName(school)} — ${folder}`;
+    $("#rsSummary").textContent = `${st.total} PCs no AD · ${st.online} ligados agora · ${st.seen} já tiveram o agente · ${st.total - st.seen} nunca apareceram`;
+    const label = { online: "🟢 Ligado", seen: "🔵 Tem o agente (desligado)", never: "🟠 Nunca apareceu" };
+    const order = { never: 0, seen: 1, online: 2 };
+    st.rows.sort((a, b) => order[a.state] - order[b.state] || natural(a.name, b.name));
+    $("#rsBody").innerHTML = st.rows.map((x) => `<tr>
+      <td class="st-${x.state}">${label[x.state]}</td>
+      <td>${esc(x.name)}<br><span class="muted small">${esc(x.mac || "sem MAC")}</span></td>
+      <td>${esc(x.pc || "—")}</td><td>${esc(x.user || "—")}</td>
+      <td class="small">${x.lastSeen ? new Date(x.lastSeen).toLocaleString("pt-PT") : "—"}</td>
+      <td class="small">${esc(x.version || "")}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sem contas nesta pasta.</td></tr>`;
+    $("#roomStatusDialog").showModal();
+  }
+  $("#rsClose").addEventListener("click", () => $("#roomStatusDialog").close());
+
+  // ---------------------------------------------------------- sistema e instalação
+  let sysFilter = null, sysTimer = null;
+  async function openSystem() {
+    await loadSystem();
+    $("#systemDialog").showModal();
+    clearInterval(sysTimer);
+    sysTimer = setInterval(() => { if ($("#systemDialog").open) loadSystem(); else clearInterval(sysTimer); }, 15000);
+  }
+  async function loadSystem() {
+    let s;
+    try { s = await api("/api/admin/system"); } catch (e) { return toast(e.message); }
+    const dt = (v) => v ? new Date(v).toLocaleString("pt-PT") : "—";
+    $("#sysUpdate").innerHTML = `<dl class="kv">
+      <dt>Versão</dt><dd><strong>v${esc(s.version)}</strong> ${s.commit ? `<span class="muted">(${esc(s.commit)})</span>` : ""}</dd>
+      <dt>Compilada em</dt><dd>${dt(s.buildDate)}</dd>
+      <dt>A correr desde</dt><dd>${dt(s.startedAt)}</dd>
+      <dt>Atualização automática</dt><dd>${s.autoUpdate ? `ligada · reinicia só entre ${esc(s.window.replace("-", " e "))} e sem consolas abertas` : "desligada"}</dd>
+      <dt>Última verificação</dt><dd>${dt(s.lastCheck)}</dd>
+      <dt>Resultado</dt><dd class="${s.lastCheck ? (s.lastOk ? "ok" : "bad") : ""}">${esc(s.lastResult)}</dd>
+      <dt>Agentes ligados</dt><dd>${s.agents.total} PCs · ${s.agents.outdated ? `<span class="bad">${s.agents.outdated} a atualizar</span>` : `<span class="ok">todos na versão atual</span>`}</dd></dl>
+      <div class="settings-row">
+        <label class="check"><input type="checkbox" id="setAuto" ${s.autoUpdate ? "checked" : ""}> Atualizar automaticamente</label>
+        <label class="inline">entre <input id="setWin" value="${esc(s.window)}" size="11" placeholder="20:00-07:00"></label>
+        <button id="setSave">Guardar</button>
+      </div>`;
+    const t = s.installTask;
+    $("#sysInstall").innerHTML = !t.exists
+      ? `<p class="warn">Falta criar a tarefa de instalação no servidor (uma vez): na pasta do agente, <code>.\\criar-tarefa-instalar.ps1</code>.</p>`
+      : `<p>${t.running ? "⏳ <strong>A instalar agora…</strong> (atualiza sozinho)" : "Pronto."} ${t.lastRun ? `<span class="muted">Última vez: ${esc(t.lastRun)}</span>` : ""}</p>`;
+    $("#sysInstallNow").disabled = !t.exists || t.running;
+    renderReport(s.report);
+  }
+  function renderReport(rep) {
+    if (!rep) { $("#sysReport").innerHTML = `<p class="muted">Ainda não há relatórios de instalação.</p>`; return; }
+    const rows = sysFilter ? rep.rows.filter((r) => categoryOf(r.result) === sysFilter) : rep.rows;
+    $("#sysReport").innerHTML = `<p class="muted small">Último relatório: ${new Date(rep.time).toLocaleString("pt-PT")} · ${rep.total} PCs verificados</p>
+      <div class="report-summary">${rep.summary.map((g) => `<button type="button" class="chip ${sysFilter === g.category ? "on" : ""}" data-cat="${esc(g.category)}">${esc(g.category)}: ${g.count}</button>`).join("")}</div>
+      <table class="table"><thead><tr><th>PC</th><th>Resultado</th></tr></thead><tbody>${rows.slice(0, 300).map((r) =>
+        `<tr><td>${esc(r.pc)}</td><td class="small">${esc(r.result)}</td></tr>`).join("")}</tbody></table>`;
+    state.lastReport = rep;
+  }
+  function categoryOf(r) {
+    if (/^Instalado/i.test(r)) return "Instalado agora";
+    if (/^Já instalado/i.test(r)) return "Já tinha o agente";
+    if (/^Sem sala/i.test(r)) return "Não pertence a uma sala ativa";
+    if (/desligado/i.test(r)) return "Desligado ou inacessível";
+    if (/\.NET/i.test(r)) return "Falta o .NET Framework";
+    if (/não está ativa/i.test(r)) return "Sala não ativa";
+    return "Erro / outro";
+  }
+  $("#sysReport").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-cat]")?.dataset.cat;
+    if (!c) return;
+    sysFilter = sysFilter === c ? null : c;
+    renderReport(state.lastReport);
+  });
+  $("#sysRefresh").addEventListener("click", loadSystem);
+  $("#sysUpdate").addEventListener("click", async (e) => {
+    if (e.target.id !== "setSave") return;
+    try {
+      await api("/api/admin/settings", { method: "POST", body: { autoUpdate: $("#setAuto").checked, window: $("#setWin").value.trim() } });
+      toast("⚙️ Definições guardadas");
+      loadSystem();
+    } catch (err) { toast(err.message); }
+  });
+  $("#sysClose").addEventListener("click", () => { $("#systemDialog").close(); clearInterval(sysTimer); });
+  $("#sysCheck").addEventListener("click", async () => {
+    toast("A verificar no GitHub…");
+    try { const r = await api("/api/admin/update", { method: "POST" }); toast(r.message); } catch (e) { toast(e.message); }
+    loadSystem();
+  });
+  $("#sysUpdateNow").addEventListener("click", async () => {
+    if (!confirm("Atualizar já? Se houver versão nova, o servidor reinicia dentro de ~1 minuto e a consola desliga-se durante esse tempo.")) return;
+    try { const r = await api("/api/admin/update?now=1", { method: "POST" }); toast(r.message); } catch (e) { toast(e.message); }
+    loadSystem();
+  });
+  $("#sysInstallNow").addEventListener("click", async () => {
+    if (!confirm("Instalar agora em todos os PCs ligados das salas ativas?\nCorre em segundo plano (pode demorar 30-60 min).")) return;
+    try { await api("/api/admin/install-now", { method: "POST" }); toast("▶ Instalação iniciada"); } catch (e) { toast(e.message); }
+    setTimeout(loadSystem, 3000);
+  });
   $("#roomsSave").addEventListener("click", async () => {
     try {
       await api("/api/admin/rooms", {

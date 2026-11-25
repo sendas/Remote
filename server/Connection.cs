@@ -141,6 +141,11 @@ public sealed class AgentConnection : Connection
     public string FullUserName { get; set; } = "";
     public string Os { get; set; } = "";
     public string Version { get; set; } = "";
+    public bool Outdated { get; set; }
+    /// <summary>Endereços MAC do PC (para o relacionar com as contas da pasta da sala no AD).</summary>
+    public List<string> Macs { get; set; } = new();
+    /// <summary>SHA-256 do executável do agente (para saber se está igual ao da partilha).</summary>
+    public string ExeSha { get; set; } = "";
     public DateTimeOffset ConnectedAt { get; } = DateTimeOffset.UtcNow;
     public bool Locked { get; set; }
     /// <summary>ConnId do professor cuja partilha de ecrã este PC está a receber.</summary>
@@ -179,6 +184,7 @@ public sealed class AgentConnection : Connection
         userName = FullUserName,
         os = Os,
         version = Version,
+        outdated = Outdated,
         ip = RemoteIp,
         locked = Locked,
         broadcasting = BroadcastFrom != null,

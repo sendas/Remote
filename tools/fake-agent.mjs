@@ -15,7 +15,7 @@ ws.binaryType = "arraybuffer";
 let streamTimer = null;
 let fileBytes = 0;
 ws.onopen = () => {
-  ws.send(JSON.stringify({ type: "hello", key, id: name, hostname: name, room, school, user: "ESCOLA\\aluno." + name.toLowerCase(), os: "Simulado", version: "0.0.0" }));
+  ws.send(JSON.stringify({ type: "hello", key, id: name, hostname: name, room, school, exeSha: process.env.SHA || "", macs: ["aa:bb:cc:00:11:22"], user: "ESCOLA\\aluno." + name.toLowerCase(), os: "Simulado", version: "0.0.0" }));
   setInterval(() => ws.send(frame(0x01)), 2000);
   ws.send(frame(0x01));
   if (process.env.HAND) { setTimeout(() => ws.send(JSON.stringify({ type: "hand" })), 1500); setTimeout(() => ws.send(JSON.stringify({ type: "chat", text: "Stôr, não percebi o exercício 3" })), 2500); }
@@ -33,6 +33,7 @@ ws.onmessage = (ev) => {
   if (m.type === "fileStart") { fileBytes = 0; console.log(`[${name}] ficheiro a chegar: ${m.name} (${m.size} bytes)`); }
   if (m.type === "fileEnd") console.log(`[${name}] ficheiro completo: ${fileBytes} bytes`);
   if (m.type === "internet") console.log(`[${name}] internet ${m.on ? "ligada" : "cortada"}`);
+  if (m.type === "selfUpdate") console.log(`[${name}] pedido para atualizar: ${m.path}`);
   if (m.type === "closeAll") console.log(`[${name}] fechar todos os programas`);
   if (m.type === "poll") { console.log(`[${name}] pergunta: ${m.question} [${m.options.join("/")}]`); setTimeout(() => ws.send(JSON.stringify({ type: "answer", poll: m.id, choice: m.options[name.endsWith("4") ? 1 : 0] })), 300); }
   if (m.type === "collect") {

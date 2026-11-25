@@ -27,7 +27,8 @@
 <!-- ============================ consola ============================ -->
 <section id="console" class="console" hidden>
   <header class="topbar">
-    <div class="brand"><img src="logo.svg" alt="" width="30" height="30"><span data-brand-name>SalaViva</span></div>
+    <div class="brand"><img src="logo.svg" alt="" width="30" height="30"><span data-brand-name>SalaViva</span>
+      <small id="appVersion" class="app-version" title="Versão do servidor e data da última atualização"></small></div>
     <select id="roomFilter" class="room-select" aria-label="Sala"></select>
     <input id="search" type="search" placeholder="Procurar PC ou aluno…" aria-label="Procurar">
     <span id="counts" class="counts"></span>
@@ -45,6 +46,7 @@
         <button data-act="password">🔑 Mudar palavra-passe</button>
         <button data-act="users" data-admin>👥 Utilizadores</button>
         <button data-act="rooms" data-admin>🏫 Escolas e salas</button>
+        <button data-act="system" data-admin>⚙️ Sistema e instalação</button>
         <hr>
         <button data-act="logout">↩ Sair</button>
       </div>
@@ -343,10 +345,42 @@ Não</textarea></label>
     <p id="roomsAdWarn" class="warn" hidden></p>
     <div id="schoolTabs" class="tabs"></div>
     <label class="school-name">Nome da escola <input id="schoolName"></label>
-    <table class="table"><thead><tr><th>Pasta no AD</th><th>PCs</th><th>Nome na consola (grupo)</th><th>Instalar</th></tr></thead><tbody id="roomsBody"></tbody></table>
+    <table class="table"><thead><tr><th>Pasta no AD</th><th title="Contas (PCs) nesta pasta do AD">PCs</th><th title="Ligados agora / já tiveram o agente">Ligados · Com agente</th><th>Nome na consola (grupo)</th><th>Instalar</th><th></th></tr></thead><tbody id="roomsBody"></tbody></table>
     <datalist id="roomNames"></datalist>
     <p class="error" data-error></p>
     <div class="actions"><button id="roomsCancel">Cancelar</button><button id="roomsSave" class="primary">Guardar</button></div>
+  </div>
+</dialog>
+
+<dialog id="roomStatusDialog" class="big-dlg">
+  <div class="dlg wide">
+    <h2>🖥 <span id="rsTitle"></span></h2>
+    <p class="muted" id="rsSummary"></p>
+    <table class="table"><thead><tr><th>Estado</th><th>Conta no AD</th><th>PC</th><th>Último utilizador</th><th>Visto</th><th>Versão</th></tr></thead><tbody id="rsBody"></tbody></table>
+    <p class="muted small">"Nunca apareceu" = o PC dessa conta ainda não instalou o agente: está desligado, não reiniciou desde que a sala foi ativada,
+      não tem o .NET Framework (Windows 7) ou o MAC da conta já não corresponde ao PC. Usa "Instalar agora" em ⚙️ Sistema e instalação.</p>
+    <div class="actions"><button id="rsClose" class="primary">Fechar</button></div>
+  </div>
+</dialog>
+
+<dialog id="systemDialog" class="big-dlg">
+  <div class="dlg wide">
+    <h2>⚙️ Sistema e instalação</h2>
+    <section class="sys-block">
+      <h3>🔄 Atualizações</h3>
+      <div id="sysUpdate"></div>
+      <div class="actions left"><button id="sysCheck">Verificar agora</button><button id="sysUpdateNow" class="danger">Atualizar já (reinicia ~1 min)</button></div>
+    </section>
+    <section class="sys-block">
+      <h3>📦 Instalar o agente nos PCs</h3>
+      <p class="muted small">Os PCs das salas com <strong>Instalar</strong> ativo (em 🏫 Escolas e salas) instalam o agente sozinhos ao reiniciar.
+        <strong>Instalar agora</strong> faz o mesmo já, em todos os PCs do domínio que estejam ligados (cada PC só instala se o seu MAC estiver numa sala ativa).
+        Demora — com centenas de PCs, 30 a 60 minutos.</p>
+      <div id="sysInstall"></div>
+      <div class="actions left"><button id="sysInstallNow" class="primary">▶ Instalar agora nos PCs ligados</button><button id="sysRefresh">↻ Atualizar</button></div>
+      <div id="sysReport"></div>
+    </section>
+    <div class="actions"><button id="sysClose" class="primary">Fechar</button></div>
   </div>
 </dialog>
 

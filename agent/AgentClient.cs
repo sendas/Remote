@@ -104,6 +104,8 @@ internal sealed class AgentClient
                     hostname = Environment.MachineName,
                     room = _cfg.Room,
                     school = _cfg.School,
+                    macs = Installer.LocalMacs(), // o servidor usa-os para saber que PC é qual dentro da sala
+                    exeSha = OwnSha,
                     user = _currentUser(),
                     os = Environment.OSVersion.VersionString,
                     version = typeof(AgentClient).Assembly.GetName().Version?.ToString(3) ?? "",
@@ -204,6 +206,18 @@ internal sealed class AgentClient
     }
 
     public void Post(object msg) => _ = SendJson(msg);
+
+    private static string? _ownSha;
+    /// <summary>SHA-256 do próprio executável (o servidor compara com o da partilha para saber se há versão nova).</summary>
+    public static string OwnSha
+    {
+        get
+        {
+            if (_ownSha != null) return _ownSha;
+            try { _ownSha = Compat.Hex(Compat.Sha256(File.ReadAllBytes(Compat.ExePath))); } catch { _ownSha = ""; }
+            return _ownSha;
+        }
+    }
 
     /// <summary>Envia dados binários e espera (para ficheiros: não se pode perder nenhum pedaço).</summary>
     public async Task SendBinary(byte[] pkt)

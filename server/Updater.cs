@@ -21,6 +21,30 @@ public sealed class Updater : BackgroundService
     private readonly IServiceProvider? _sp;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
 
+    /// <summary>Para a consola: quando foi a última verificação e o que deu.</summary>
+    public static DateTimeOffset? LastCheck { get; private set; }
+    public static string LastResult { get; private set; } = "Ainda não verificou.";
+    public static bool LastOk { get; private set; }
+
+    public async Task<string> CheckAndRecord(bool force)
+    {
+        try
+        {
+            var msg = await CheckOnce(default, force);
+            LastOk = true;
+            LastResult = msg;
+            return msg;
+        }
+        catch (Exception ex)
+        {
+            LastOk = false;
+            LastResult = "Falhou a ligação ao GitHub: " + ex.Message +
+                         (ex.InnerException != null ? " (" + ex.InnerException.Message + ")" : "");
+            return LastResult;
+        }
+        finally { LastCheck = DateTimeOffset.Now; }
+    }
+
     public Updater(ServerConfig cfg, ILogger<Updater> log, IServiceProvider? sp = null)
     {
         _cfg = cfg;
@@ -33,12 +57,12 @@ public sealed class Updater : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        if (!_cfg.AutoUpdate) return;
         await Task.Delay(TimeSpan.FromSeconds(30), ct).ContinueWith(_ => { });
         while (!ct.IsCancellationRequested)
         {
-            try { var msg = await CheckOnce(ct, force: false); _log.LogInformation("Auto-update: {Msg}", msg); }
-            catch (Exception ex) { _log.LogWarning("Auto-update: {Msg}", ex.Message); }
+            if (!_cfg.AutoUpdate) { await Task.Delay(TimeSpan.FromMinutes(5), ct).ContinueWith(_ => { }); continue; }
+            var msg = await CheckAndRecord(force: false);
+            _log.LogInformation("Auto-update: {Msg}", msg);
             await Task.Delay(TimeSpan.FromMinutes(Math.Clamp(_cfg.UpdateCheckMinutes, 10, 1440)), ct)
                 .ContinueWith(_ => { });
         }
@@ -70,12 +94,19 @@ public sealed class Updater : BackgroundService
         var size = (long?)asset["size"] ?? 0;
         var updatedAt = (string?)asset["updated_at"] ?? "";
 
+        // 1) agente dos PCs: renova a partilha de instalação (os PCs atualizam-se sozinhos ao ver a diferença)
+        var agentMsg = "";
+        var agentAsset = assets.FirstOrDefault(a => string.Equals((string?)a?["name"], "SalaViva-Agente.zip", StringComparison.OrdinalIgnoreCase));
+        if (agentAsset != null && (force || (InWindow() && !TeachersOnline())))
+            agentMsg = await RefreshAgentShare((string)agentAsset["browser_download_url"]!, (string?)agentAsset["updated_at"] ?? "", ct);
+
+        // 2) o próprio servidor
         var state = ReadState();
         var runningSha = Sha256(Environment.ProcessPath!);
         // só está "em dia" se a release é a mesma E o programa a correr é mesmo o dessa release
         // (se uma troca anterior falhou, volta a tentar)
         if (state.Size == size && state.UpdatedAt == updatedAt && state.ExeSha == runningSha)
-            return "Já está na versão mais recente.";
+            return "Já está na versão mais recente." + agentMsg;
         if (!force && (!InWindow() || TeachersOnline()))
             return $"Há versão nova; fica para a janela de manutenção ({_cfg.UpdateWindow}) sem consolas abertas.";
 
@@ -103,10 +134,44 @@ public sealed class Updater : BackgroundService
         {
             ScheduleSwap(Path.GetDirectoryName(newExe)!, Path.GetDirectoryName(running)!);
             _log.LogWarning("Auto-update: nova versão descarregada; troca agendada em ~1 minuto.");
-            return "Nova versão descarregada. O serviço vai reiniciar dentro de ~1 minuto.";
+            return "Nova versão descarregada. O serviço vai reiniciar dentro de ~1 minuto." + agentMsg;
         }
         return "Nova versão descarregada em " + newDir + " (troca automática só em Windows).";
     }
+
+    /// <summary>Atualiza C:\Deploy\SalaDeAula\leve (e o instalar-agora.ps1) com o agente da release.</summary>
+    private async Task<string> RefreshAgentShare(string url, string updatedAt, CancellationToken ct)
+    {
+        var deploy = _cfg.DeployDir;
+        var leve = Path.Combine(deploy, "leve");
+        if (!Directory.Exists(leve)) return " (partilha do agente não encontrada)";
+        var marker = Path.Combine(Path.GetDirectoryName(StateFile)!, "agente-release.txt");
+        if (File.Exists(marker) && File.ReadAllText(marker).Trim() == updatedAt) return "";
+
+        var dir = Path.Combine(Path.GetDirectoryName(StateFile)!, "agente");
+        if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        Directory.CreateDirectory(dir);
+        var zip = Path.Combine(dir, "agente.zip");
+        await Download(url, zip, ct);
+        ZipFile.ExtractToDirectory(zip, Path.Combine(dir, "x"));
+        var newLeve = Directory.GetDirectories(Path.Combine(dir, "x"), "leve", SearchOption.AllDirectories).FirstOrDefault();
+        if (newLeve == null) return " (o ZIP do agente não tem a pasta leve)";
+        var failed = 0;
+        foreach (var f in Directory.GetFiles(newLeve))
+        {
+            try { File.Copy(f, Path.Combine(leve, Path.GetFileName(f)), true); }
+            catch { failed++; } // ficheiro em uso (um PC a instalar nesse momento): fica para a próxima
+        }
+        var ps = Directory.GetFiles(Path.Combine(dir, "x"), "instalar-agora.ps1", SearchOption.AllDirectories).FirstOrDefault();
+        if (ps != null) try { File.Copy(ps, Path.Combine(deploy, "instalar-agora.ps1"), true); } catch { }
+        if (failed == 0) File.WriteAllText(marker, updatedAt);
+        try { Directory.Delete(dir, true); } catch { }
+        AgentShareChanged?.Invoke();
+        return failed == 0 ? " Agente dos PCs atualizado na partilha." : " Agente: alguns ficheiros estavam em uso; tenta de novo na próxima verificação.";
+    }
+
+    /// <summary>Avisa o hub para mandar os PCs ligados atualizarem-se.</summary>
+    public static event Action? AgentShareChanged;
 
     private async Task Download(string url, string dest, CancellationToken ct)
     {

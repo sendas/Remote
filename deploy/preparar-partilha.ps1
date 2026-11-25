@@ -32,6 +32,8 @@ if (-not (Test-Path (Join-Path $leve 'ClassroomAgent.exe'))) { throw "Não encon
 # ------------------------------------------------------------------ ficheiros
 New-Item "$Pasta\leve" -ItemType Directory -Force | Out-Null
 Copy-Item "$leve\*" "$Pasta\leve\" -Force
+# o instalador "já" (usado pelo botão da consola, através da tarefa SalaVivaInstalar)
+Copy-Item (Join-Path $PSScriptRoot 'instalar-agora.ps1') $Pasta -Force
 Get-ChildItem $Pasta -Recurse | Unblock-File
 
 $key = (& "$ServerDir\ClassroomServer.exe" show-key | Select-Object -Last 1).Trim()

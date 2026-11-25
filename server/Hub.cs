@@ -48,8 +48,11 @@ public sealed partial class Hub
 
     private readonly RoomCatalog _catalog;
 
-    public Hub(ServerConfig cfg, Audit audit, ILogger<Hub> log, RoomCatalog catalog, PersistentState state)
+    private readonly SeenStore _seen;
+
+    public Hub(ServerConfig cfg, Audit audit, ILogger<Hub> log, RoomCatalog catalog, PersistentState state, SeenStore seen)
     {
+        _seen = seen;
         _catalog = catalog;
         _catalog.Changed += OnCatalogChanged;
         _cfg = cfg;
@@ -63,7 +66,48 @@ public sealed partial class Hub
             if (acc != null) _sessions[si.Token] = new TeacherSession(si.Token, acc, si.Expires);
         }
         _expiry = new Timer(_ => ExpireTimedLocks(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+        Updater.AgentShareChanged += () => { _shareSha = null; foreach (var a in SnapshotAgents()) OfferUpdate(a); };
         _cleanup = new Timer(_ => CleanupOldFiles(), null, TimeSpan.FromHours(24), TimeSpan.FromHours(24));
+    }
+
+    // ---------------------------------------------------------------- atualização dos agentes
+    private string? _shareSha;
+    private DateTime _shareShaAt;
+
+    /// <summary>SHA-256 do agente que está na partilha de instalação (C:\Deploy\SalaDeAula\leve).</summary>
+    public string ShareAgentSha()
+    {
+        if (_shareSha != null && DateTime.UtcNow - _shareShaAt < TimeSpan.FromMinutes(5)) return _shareSha;
+        try
+        {
+            var f = Path.Combine(_cfg.DeployDir, "leve", "ClassroomAgent.exe");
+            using var s = File.OpenRead(f);
+            _shareSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(s));
+        }
+        catch { _shareSha = ""; }
+        _shareShaAt = DateTime.UtcNow;
+        return _shareSha;
+    }
+
+    /// <summary>Se o agente do PC é diferente do da partilha, pede-lhe que se atualize (o PC corre o instalador da partilha).</summary>
+    private void OfferUpdate(AgentConnection a)
+    {
+        var share = ShareAgentSha();
+        var outdated = share.Length > 0 && a.ExeSha.Length > 0 && a.ExeSha != share;
+        if (outdated != a.Outdated)
+        {
+            a.Outdated = outdated;
+            BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
+        }
+        if (!outdated) return;
+        var path = $"\\\\{Environment.MachineName}\\{_cfg.DeployShare}\\leve\\ClassroomAgent.exe";
+        a.SendJson(new { type = "selfUpdate", path });
+    }
+
+    public (int Total, int Outdated) AgentVersions()
+    {
+        var all = SnapshotAgents();
+        return (all.Count, all.Count(a => a.Outdated));
     }
 
     /// <summary>Bloqueios temporizados que acabaram: o agente já desbloqueou sozinho; atualiza a consola.</summary>
@@ -217,6 +261,54 @@ public sealed partial class Hub
         RefreshThumbs();
     }
 
+    /// <summary>
+    /// Estado de uma pasta (sala) do AD: cada conta/PC com o que sabemos dele —
+    /// ligado agora, já teve o agente (e quando), ou nunca apareceu.
+    /// </summary>
+    public object RoomStatus(string school, string folder)
+    {
+        var online = SnapshotAgents();
+        var rows = _catalog.AccountsOf(school, folder).Select(acc =>
+        {
+            var on = acc.Mac.Length > 0 ? online.FirstOrDefault(a => a.Macs.Contains(acc.Mac)) : null;
+            var seen = acc.Mac.Length > 0 ? _seen.Get(acc.Mac) : null;
+            return new
+            {
+                name = acc.Name,
+                mac = acc.Mac,
+                state = on != null ? "online" : seen != null ? "seen" : "never",
+                pc = on?.Hostname ?? seen?.Pc ?? "",
+                user = on != null ? (on.FullUserName.Length > 0 ? on.FullUserName : on.User) : seen?.User ?? "",
+                lastSeen = on != null ? DateTimeOffset.UtcNow : seen?.LastSeen,
+                version = on?.Version ?? seen?.Version ?? "",
+            };
+        }).ToList();
+        return new
+        {
+            school, folder,
+            total = rows.Count,
+            online = rows.Count(r => r.state == "online"),
+            seen = rows.Count(r => r.state != "never"),
+            rows,
+        };
+    }
+
+    /// <summary>Contagens por pasta (para a tabela de "Escolas e salas").</summary>
+    public Dictionary<string, (int Online, int Seen)> FolderCounts()
+    {
+        var online = SnapshotAgents();
+        var res = new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var acc in _catalog.AllAccounts())
+        {
+            var k = RoomCatalog.Key(acc.School, acc.Folder);
+            var (on, seen) = res.GetValueOrDefault(k);
+            var isOn = acc.Mac.Length > 0 && online.Any(a => a.Macs.Contains(acc.Mac));
+            var wasSeen = isOn || (acc.Mac.Length > 0 && _seen.Get(acc.Mac) != null);
+            res[k] = (on + (isOn ? 1 : 0), seen + (wasSeen ? 1 : 0));
+        }
+        return res;
+    }
+
     public object CatalogFor(TeacherSession s) =>
         _catalog.Snapshot((school, room) => s.Account.CanSee(school, room),
             SnapshotAgents().Select(a => (a.School, a.Room)));
@@ -305,6 +397,9 @@ public sealed partial class Hub
         a.Hostname = Clean(n["hostname"]?.GetValue<string>(), 64);
         a.Folder = Clean(n["room"]?.GetValue<string>(), 64);
         a.School = Clean(n["school"]?.GetValue<string>(), 32);
+        a.ExeSha = Clean(n["exeSha"]?.GetValue<string>(), 64).ToUpperInvariant();
+        a.Macs = (n["macs"] as JsonArray)?.Select(m => SeenStore.NormalizeMac(m?.ToString())).Where(m => m.Length > 0).Distinct().Take(8).ToList()
+                 ?? new List<string>();
         a.Room = _catalog.Resolve(a.School, a.Folder);
         a.SchoolName = _catalog.SchoolName(a.School);
         a.User = Clean(n["user"]?.GetValue<string>(), 128);
@@ -348,6 +443,8 @@ public sealed partial class Hub
         if (!a.NoInternet) a.SendJson(new { type = "internet", on = true });
         if (a.NoInternet) a.SendJson(new { type = "internet", on = false });
         BroadcastToTeachers(a, new { type = "agentJoined", agent = a.Describe() });
+        _seen.Touch(a.Macs, new SeenStore.Seen(a.Hostname, a.User, a.School, a.Folder, DateTimeOffset.UtcNow, a.Version));
+        OfferUpdate(a);
         ResolveName(a);
         RefreshThumbs(a);
         return true;

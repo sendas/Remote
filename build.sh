@@ -9,5 +9,5 @@ dotnet publish "$root/server/ClassroomServer.csproj" -c Release -r win-x64 --sel
 dotnet publish "$root/agent/ClassroomAgent.csproj" -c Release -f net8.0-windows -o "$out/agent"
 dotnet publish "$root/agent/ClassroomAgent.csproj" -c Release -f net462 -o "$out/agent/leve"
 cp "$root/deploy/install-server.ps1" "$out/server/"
-cp "$root/deploy/install-agent.ps1" "$root/deploy/uninstall-agent.ps1" "$root/deploy/install-remote.ps1" "$root/deploy/preparar-partilha.ps1" "$root/deploy/instalar-agora.ps1" "$root/deploy/criar-gpo.ps1" "$out/agent/"
+cp "$root/deploy/install-agent.ps1" "$root/deploy/uninstall-agent.ps1" "$root/deploy/install-remote.ps1" "$root/deploy/preparar-partilha.ps1" "$root/deploy/instalar-agora.ps1" "$root/deploy/criar-gpo.ps1" "$root/deploy/criar-tarefa-instalar.ps1" "$out/agent/"
 echo "Pronto: $out"

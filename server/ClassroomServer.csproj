@@ -6,9 +6,14 @@
     <AssemblyName>ClassroomServer</AssemblyName>
     <RootNamespace>ClassroomServer</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <Version>2.1.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- data de compilação, mostrada no topo da consola -->
+  <ItemGroup>
+    <AssemblyMetadata Include="BuildDate" Value="$([System.DateTime]::UtcNow.ToString('o'))" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -34,6 +34,20 @@ public sealed class RoomCatalog
     public event Action? Changed;
 
     public sealed record AdFolder(string School, string Folder, int Count);
+    /// <summary>Uma conta da árvore de salas: normalmente o "nome de início de sessão" é o MAC do PC.</summary>
+    public sealed record AdAccount(string School, string Folder, string Name, string Mac);
+    private List<AdAccount> _adAccounts = new();
+
+    /// <summary>Contas (PCs) de uma pasta do AD.</summary>
+    public List<AdAccount> AccountsOf(string school, string folder)
+    {
+        AdFolders(); // atualiza a cache se for preciso
+        return _adAccounts.Where(a => a.School.Equals(school, StringComparison.OrdinalIgnoreCase) &&
+                                      a.Folder.Equals(folder, StringComparison.OrdinalIgnoreCase))
+                          .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    public List<AdAccount> AllAccounts() { AdFolders(); return _adAccounts; }
 
     public RoomCatalog(ServerConfig cfg, ILogger<RoomCatalog> log)
     {
@@ -195,15 +209,23 @@ public sealed class RoomCatalog
                 var baseLen = SplitDn(_cfg.AdBase).Length;
                 using var root = new System.DirectoryServices.DirectoryEntry("LDAP://" + _cfg.AdBase);
                 using var s = new System.DirectoryServices.DirectorySearcher(root,
-                    "(|(objectClass=user)(objectClass=computer))", new[] { "distinguishedName" }) { PageSize = 1000 };
+                    "(|(objectClass=user)(objectClass=computer))",
+                    new[] { "distinguishedName", "name", "sAMAccountName", "userPrincipalName" }) { PageSize = 1000 };
                 var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var accounts = new List<AdAccount>();
                 foreach (System.DirectoryServices.SearchResult r in s.FindAll())
                 {
                     var (school, folder) = SchoolAndFolder((string)r.Properties["distinguishedname"][0], baseLen);
                     if (school.Length == 0) continue;
                     var k = Key(school, folder);
                     counts[k] = counts.GetValueOrDefault(k) + 1;
+                    string P(string name) => r.Properties[name].Count > 0 ? r.Properties[name][0]?.ToString() ?? "" : "";
+                    var upn = P("userprincipalname");
+                    var mac = SeenStore.NormalizeMac(P("samaccountname"));
+                    if (mac.Length == 0 && upn.Contains('@')) mac = SeenStore.NormalizeMac(upn[..upn.IndexOf('@')]);
+                    accounts.Add(new AdAccount(school, folder, P("name"), mac));
                 }
+                _adAccounts = accounts;
                 list = counts.Select(kv =>
                 {
                     var i = kv.Key.IndexOf('/');

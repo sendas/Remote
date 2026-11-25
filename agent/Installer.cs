@@ -166,7 +166,7 @@ internal static class Installer
     }
 
     /// <summary>MACs das placas de rede físicas, no formato das contas do AD (12 hex minúsculos).</summary>
-    private static List<string> LocalMacs() =>
+    public static List<string> LocalMacs() =>
         NetworkInterface.GetAllNetworkInterfaces()
             .Where(n => n.NetworkInterfaceType is NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211
                         or NetworkInterfaceType.GigabitEthernet)

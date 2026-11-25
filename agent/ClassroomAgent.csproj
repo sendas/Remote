@@ -15,7 +15,7 @@
     <AssemblyName>ClassroomAgent</AssemblyName>
     <RootNamespace>ClassroomAgent</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.1.0</Version>
+    <Version>2.1.0</Version>
     <DebugType>none</DebugType>
   </PropertyGroup>
 

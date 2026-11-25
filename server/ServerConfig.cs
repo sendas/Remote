@@ -36,6 +36,8 @@ public sealed class ServerConfig
     public List<RoomRule> Rooms { get; set; } = new();
     /// <summary>Pasta partilhada de instalação (instalar.json é atualizado quando se mudam as salas ativas).</summary>
     public string DeployDir { get; set; } = @"C:\Deploy\SalaDeAula";
+    /// <summary>Nome da partilha de DeployDir (os PCs atualizam-se a partir de \\SERVIDOR\&lt;partilha&gt;\leve).</summary>
+    public string DeployShare { get; set; } = "SalaDeAula$";
     /// <summary>Chave partilhada que os agentes dos alunos têm de apresentar.</summary>
     public string EnrollmentKey { get; set; } = "";
     public List<TeacherAccount> Teachers { get; set; } = new();

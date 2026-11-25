@@ -7,6 +7,7 @@ using Microsoft.Extensions.FileProviders;
 if (args.Length > 0 && !args[0].StartsWith("--"))
     return Cli.Run(args);
 
+System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance); // saída de schtasks (cp850)
 var cfg = ServerConfig.LoadOrCreate(out var firstRun);
 var cert = Certificates.Load(cfg);
 
@@ -47,12 +48,13 @@ builder.Services.AddSingleton(cfg);
 builder.Services.AddSingleton<Audit>();
 builder.Services.AddSingleton<RoomCatalog>();
 builder.Services.AddSingleton<PersistentState>();
+builder.Services.AddSingleton<SeenStore>();
 builder.Services.AddSingleton<Hub>();
 // parar o serviço em poucos segundos, mesmo com ligações abertas (consola, agentes)
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(5));
 if (cfg.AgentPipe) builder.Services.AddHostedService<PipeListener>();
 builder.Services.AddSingleton(sp => new Updater(sp.GetRequiredService<ServerConfig>(), sp.GetRequiredService<ILogger<Updater>>(), sp));
-if (cfg.AutoUpdate) builder.Services.AddHostedService(sp => sp.GetRequiredService<Updater>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Updater>());
 
 var app = builder.Build();
 Hub.CleanupOldFiles();
@@ -124,6 +126,8 @@ app.MapGet("/api/me", (HttpContext ctx, Hub hub) =>
         displayName = s.Account.DisplayName,
         isAdmin = s.Account.IsAdmin,
         rooms = s.Account.Rooms,
+        version = AppVersion.Version,
+        buildDate = AppVersion.BuildDate,
     });
 });
 
@@ -250,7 +254,9 @@ app.MapGet("/api/admin/rooms", (HttpContext ctx, Hub hub, RoomCatalog cat) =>
 {
     var s = Auth(ctx, hub);
     if (s == null) return Results.Unauthorized();
-    return s.Account.IsAdmin ? Results.Json(cat.AdminView()) : Results.StatusCode(403);
+    if (!s.Account.IsAdmin) return Results.StatusCode(403);
+    var counts = hub.FolderCounts().ToDictionary(kv => kv.Key, kv => new { online = kv.Value.Online, seen = kv.Value.Seen });
+    return Results.Json(new { view = cat.AdminView(), counts });
 });
 
 app.MapPost("/api/admin/rooms", async (HttpContext ctx, Hub hub, RoomCatalog cat, Audit audit) =>
@@ -300,6 +306,9 @@ app.Map("/ws/teacher", async (HttpContext ctx, Hub hub) =>
     using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
     await hub.RunTeacher(ws, ctx.Connection.RemoteIpAddress?.ToString() ?? "?", session);
 });
+
+SystemApi.Map(app);
+app.Lifetime.ApplicationStopping.Register(() => app.Services.GetRequiredService<SeenStore>().Flush());
 
 app.Run();
 return 0;
