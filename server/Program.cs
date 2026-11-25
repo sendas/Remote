@@ -46,6 +46,7 @@ builder.WebHost.ConfigureKestrel(k =>
 builder.Services.AddSingleton(cfg);
 builder.Services.AddSingleton<Audit>();
 builder.Services.AddSingleton<Hub>();
+if (cfg.AgentPipe) builder.Services.AddHostedService<PipeListener>();
 
 var app = builder.Build();
 var log = app.Logger;

@@ -26,6 +26,11 @@ public sealed class ServerConfig
     /// não tem as cifras que os browsers atuais exigem.
     /// </summary>
     public string TlsEngine { get; set; } = "auto";
+    /// <summary>
+    /// Aceita agentes também pelo named pipe \\SERVIDOR\pipe\SalaDeAula (SMB, porta 445).
+    /// Útil quando a firewall entre VLANs não deixa os PCs chegar à porta HTTPS do servidor.
+    /// </summary>
+    public bool AgentPipe { get; set; } = true;
     /// <summary>Intervalo entre miniaturas enviadas por cada aluno.</summary>
     public int ThumbnailIntervalMs { get; set; } = 2000;
     public int ThumbnailWidth { get; set; } = 360;
