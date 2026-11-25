@@ -1,3 +1,4 @@
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -60,25 +61,36 @@ public sealed class Updater : BackgroundService
         if (state.Size == size && state.UpdatedAt == updatedAt)
             return "Já está na versão mais recente.";
 
-        Directory.CreateDirectory(Path.GetDirectoryName(StateFile)!);
-        var newExe = Path.Combine(ServerConfig.DataDir, "update", "ClassroomServer.new.exe");
-        await Download(url, newExe, ct);
+        var upd = Path.GetDirectoryName(StateFile)!;
+        Directory.CreateDirectory(upd);
+        var zip = Path.Combine(upd, "novo.zip");
+        await Download(url, zip, ct);
+
+        // o ZIP traz o ClassroomServer.exe e a pasta wwwroot (a consola web)
+        var newDir = Path.Combine(upd, "novo");
+        if (Directory.Exists(newDir)) Directory.Delete(newDir, true);
+        ZipFile.ExtractToDirectory(zip, newDir);
+        File.Delete(zip);
+        var newExe = Directory.GetFiles(newDir, "ClassroomServer.exe", SearchOption.AllDirectories).FirstOrDefault();
+        if (newExe == null) return "O ZIP não tem o ClassroomServer.exe.";
 
         var running = Environment.ProcessPath!;
-        if (Sha256(newExe) == Sha256(running))
+        var webNew = Path.Combine(Path.GetDirectoryName(newExe)!, "wwwroot");
+        var webNow = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        if (Sha256(newExe) == Sha256(running) && SameDir(webNew, webNow))
         {
             WriteState(size, updatedAt);
-            return "O ficheiro descarregado é igual ao atual. Nada a trocar.";
+            return "A versão publicada é igual à atual. Nada a trocar.";
         }
 
         WriteState(size, updatedAt);
         if (OperatingSystem.IsWindows())
         {
-            ScheduleSwap(newExe, running);
+            ScheduleSwap(Path.GetDirectoryName(newExe)!, Path.GetDirectoryName(running)!);
             _log.LogWarning("Auto-update: nova versão descarregada; troca agendada em ~1 minuto.");
             return "Nova versão descarregada. O serviço vai reiniciar dentro de ~1 minuto.";
         }
-        return "Nova versão descarregada em " + newExe + " (troca automática só em Windows).";
+        return "Nova versão descarregada em " + newDir + " (troca automática só em Windows).";
     }
 
     private async Task Download(string url, string dest, CancellationToken ct)
@@ -89,8 +101,17 @@ public sealed class Updater : BackgroundService
         await resp.Content.CopyToAsync(fs, ct);
     }
 
-    /// <summary>Agenda uma tarefa única (SYSTEM) que para o serviço, troca o exe e volta a arrancar.</summary>
-    private void ScheduleSwap(string newExe, string target)
+    private static bool SameDir(string a, string b)
+    {
+        if (!Directory.Exists(a) || !Directory.Exists(b)) return false;
+        var fa = Directory.GetFiles(a).Select(Path.GetFileName).OrderBy(x => x).ToList();
+        var fb = Directory.GetFiles(b).Select(Path.GetFileName).OrderBy(x => x).ToList();
+        if (!fa.SequenceEqual(fb)) return false;
+        return fa.All(f => Sha256(Path.Combine(a, f!)) == Sha256(Path.Combine(b, f!)));
+    }
+
+    /// <summary>Agenda uma tarefa única (SYSTEM) que para o serviço, troca o exe e a consola web, e volta a arrancar.</summary>
+    private void ScheduleSwap(string newDir, string targetDir)
     {
         var dir = Path.GetDirectoryName(StateFile)!;
         var cmd = Path.Combine(dir, "trocar.cmd");
@@ -99,7 +120,8 @@ public sealed class Updater : BackgroundService
             "@echo off",
             "net stop ClassroomServer",
             "ping -n 4 127.0.0.1 > nul",
-            $"copy /y \"{newExe}\" \"{target}\"",
+            $"copy /y \"{Path.Combine(newDir, "ClassroomServer.exe")}\" \"{Path.Combine(targetDir, "ClassroomServer.exe")}\"",
+            $"xcopy /e /y /i \"{Path.Combine(newDir, "wwwroot")}\" \"{Path.Combine(targetDir, "wwwroot")}\"",
             "net start ClassroomServer",
             "schtasks /delete /tn SalaVivaUpdate /f",
             "exit /b 0",

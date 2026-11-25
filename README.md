@@ -1,5 +1,7 @@
 # Sala de Aula — controlo dos computadores da sala
 
+> **Guia passo a passo (instalação, primeira configuração, testes e uso nas aulas): [GUIA.md](GUIA.md)**
+
 Permite ao professor, a partir de um browser (Mac ou Windows):
 
 - **ver todos os ecrãs** em miniatura, em tempo real, filtrados por sala;
@@ -192,6 +194,17 @@ reinicia-se sozinho (agenda uma tarefa que para o serviço, troca o executável 
   ação: nada, **bloquear o PC** (com a duração que quiseres) ou **terminar a sessão**.
 - **🔒 Bloquear**: além de "até eu desbloquear", podes bloquear **durante X minutos** — o ecrã de bloqueio mostra
   uma **contagem decrescente grande** e desbloqueia sozinho no fim.
+
+## Funções de aula
+
+- **🚫 Sem Internet / 🌐 Com Internet** — regra da firewall do Windows no PC (bloqueia HTTP/HTTPS para endereços
+  públicos; a rede da escola continua a funcionar). Volta sozinha se o servidor ficar inacessível.
+- **📁 Enviar ficheiro** (até 100 MB) — chega à pasta *Documentos Públicos › SalaViva › Recebidos do professor*.
+- **📥 Recolher trabalhos** — junta a pasta *Entregar ao professor* de cada aluno num ZIP (⋯ Mais › Ver trabalhos recolhidos).
+- **🗳 Pergunta rápida** — Sim/Não, 👍🤔👎, A–D, 1–5 ou personalizada; resultados ao vivo.
+- **🎬 Mostrar o ecrã de um aluno à turma** — botão direito num PC.
+- **✖ Fechar todos os programas** e **📋 Exportar lista (presenças)** em ⋯ Mais.
+- O cartão de cada PC mostra o **nome completo** de quem tem sessão (lido do AD).
 
 ## Segurança e RGPD
 

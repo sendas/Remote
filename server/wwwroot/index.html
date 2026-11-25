@@ -58,19 +58,35 @@
     <span class="sep"></span>
     <button data-cmd="lock" data-needs-sel class="c-red">🔒 Bloquear</button>
     <button data-cmd="unlock" data-needs-sel>🔓 Desbloquear</button>
+    <button data-cmd="notice" data-needs-sel>📣 Aviso</button>
     <button data-cmd="message" data-needs-sel class="c-blue">💬 Mensagem</button>
-    <button data-cmd="openUrl" data-needs-sel>🌐 Abrir link</button>
-    <button data-cmd="type" data-needs-sel>⌨ Escrever texto</button>
-    <button data-cmd="notice" data-needs-sel>📣 Aviso no ecrã</button>
-    <button data-cmd="minimize" data-needs-sel>🗕 Minimizar tudo</button>
-    <button data-cmd="mute" data-needs-sel>🔇 Silenciar</button>
+    <button data-cmd="internetOff" data-needs-sel>🚫 Sem Internet</button>
+    <button data-cmd="internetOn" data-needs-sel>🌐 Com Internet</button>
+    <span class="sep"></span>
+    <button data-cmd="sendFile" data-needs-sel>📁 Enviar ficheiro</button>
+    <button data-cmd="collect" data-needs-sel>📥 Recolher trabalhos</button>
+    <button data-cmd="poll" data-needs-sel>🗳 Pergunta</button>
     <span class="sep"></span>
     <button id="shareBtn" data-needs-sel class="primary">📺 Partilhar o meu ecrã</button>
     <button id="shareStopBtn" hidden class="danger">⏹ Parar partilha</button>
-    <span class="sep"></span>
-    <button data-cmd="logoff" data-needs-sel>Terminar sessão</button>
-    <button data-cmd="reboot" data-needs-sel>Reiniciar</button>
-    <button data-cmd="shutdown" data-needs-sel class="danger">⏻ Desligar</button>
+    <button id="demoStopBtn" hidden class="danger">⏹ Parar demonstração</button>
+    <div class="menu">
+      <button id="moreBtn">⋯ Mais ▾</button>
+      <div id="moreMenu" class="menu-list" hidden>
+        <button data-cmd="openUrl" data-needs-sel>🌐 Abrir link</button>
+        <button data-cmd="type" data-needs-sel>⌨ Escrever texto</button>
+        <button data-cmd="minimize" data-needs-sel>🗕 Minimizar tudo</button>
+        <button data-cmd="mute" data-needs-sel>🔇 Silenciar</button>
+        <button data-cmd="closeAll" data-needs-sel>✖ Fechar todos os programas</button>
+        <hr>
+        <button id="entregasBtn">📦 Ver trabalhos recolhidos</button>
+        <button id="exportBtn">📋 Exportar lista (presenças)</button>
+        <hr>
+        <button data-cmd="logoff" data-needs-sel>↩ Terminar sessão</button>
+        <button data-cmd="reboot" data-needs-sel>🔄 Reiniciar</button>
+        <button data-cmd="shutdown" data-needs-sel class="danger">⏻ Desligar</button>
+      </div>
+    </div>
   </div>
 
   <main class="main">
@@ -104,6 +120,10 @@
   <button data-ctx="lock">🔒 Bloquear</button>
   <button data-ctx="unlock">🔓 Desbloquear</button>
   <button data-ctx="procs">📋 Programas abertos</button>
+  <button data-ctx="demo">🎬 Mostrar este ecrã à turma</button>
+  <button data-ctx="internetOff">🚫 Sem Internet</button>
+  <button data-ctx="internetOn">🌐 Com Internet</button>
+  <button data-ctx="closeAll">✖ Fechar todos os programas</button>
   <button data-ctx="type">⌨ Escrever texto</button>
   <button data-ctx="chat">💬 Conversar</button>
   <button data-ctx="notice">📣 Aviso no ecrã</button>
@@ -217,6 +237,46 @@
     <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Mostrar</button></div>
   </form>
 </dialog>
+
+<dialog id="pollDialog">
+  <form method="dialog" class="dlg">
+    <h2>🗳 Pergunta rápida</h2>
+    <p class="muted" data-targets></p>
+    <label>Pergunta <input name="question" maxlength="300" required value="Perceberam?"></label>
+    <div class="chips" id="pollPresets">
+      <button type="button" class="chip" data-opts="Sim|Não">Sim / Não</button>
+      <button type="button" class="chip" data-opts="Percebi 👍|Mais ou menos 🤔|Não percebi 👎">👍 🤔 👎</button>
+      <button type="button" class="chip" data-opts="A|B|C|D">A B C D</button>
+      <button type="button" class="chip" data-opts="1|2|3|4|5">1 a 5</button>
+      <button type="button" class="chip" data-opts="Verdadeiro|Falso">V / F</button>
+    </div>
+    <label>Respostas (uma por linha) <textarea name="options" rows="4" required>Sim
+Não</textarea></label>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Perguntar</button></div>
+  </form>
+</dialog>
+
+<dialog id="pollResults" class="big-dlg">
+  <div class="dlg wide">
+    <h2>🗳 <span id="pollQ"></span></h2>
+    <p class="muted" id="pollCount"></p>
+    <div id="pollBars" class="bars"></div>
+    <details><summary>Respostas por aluno</summary><table class="table"><tbody id="pollWho"></tbody></table></details>
+    <div class="actions"><button id="pollEnd" class="danger">Fechar a pergunta nos PCs</button><button id="pollHide" class="primary">Fechar</button></div>
+  </div>
+</dialog>
+
+<dialog id="entregasDialog" class="big-dlg">
+  <div class="dlg wide">
+    <h2>📦 Trabalhos recolhidos</h2>
+    <p class="muted small">Os alunos guardam o trabalho na pasta <strong>Documentos Públicos › SalaViva › Entregar ao professor</strong>
+      (também no ícone SalaViva junto ao relógio). "Recolher trabalhos" junta tudo aqui, um ZIP por aluno.</p>
+    <div id="entregasBody"></div>
+    <div class="actions"><button id="entregasRefresh">↻ Atualizar</button><button id="entregasClose" class="primary">Fechar</button></div>
+  </div>
+</dialog>
+
+<input type="file" id="filePick" hidden>
 
 <dialog id="typeDialog">
   <form method="dialog" class="dlg">

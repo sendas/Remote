@@ -20,6 +20,8 @@ internal sealed class AgentApp : ApplicationContext
     private List<BroadcastForm>? _broadcast;
     private ViewIndicator? _indicator;
     private ChatForm? _chat;
+    private readonly List<PollForm> _polls = new();
+    private bool _noInternet;
     private readonly List<NoticeForm> _notices = new();
     private DateTime? _disconnectedSince;
     private string _user = "";
@@ -36,7 +38,9 @@ internal sealed class AgentApp : ApplicationContext
         _ = _ui.Handle;
 
         var trayMenu = new ContextMenuStrip();
-        trayMenu.Items.Add("Mensagens ao professor", null, (_, _) => Chat().Pop());
+        trayMenu.Items.Add("💬 Mensagens ao professor", null, (_, _) => Chat().Pop());
+        trayMenu.Items.Add("📥 Pasta para entregar trabalhos", null, (_, _) => Classroom.OpenFolder(Classroom.HandInDir, _session));
+        trayMenu.Items.Add("📁 Ficheiros recebidos do professor", null, (_, _) => Classroom.OpenFolder(Classroom.ReceivedDir, _session));
         _tray = new NotifyIcon
         {
             Icon = AppIcon.Get(),
@@ -50,6 +54,9 @@ internal sealed class AgentApp : ApplicationContext
         _client = new AgentClient(cfg, () => _user);
         _client.Command += n => _ui.BeginInvoke((Action)(() => OnCommand(n)));
         _client.ShareFrame += OnShareFrame;
+        _client.FileChunk += Classroom.FileChunk;
+        Classroom.EnsureFolders();
+        if (Program.RunningAsSystem) Classroom.SetInternet(true); // nunca fica sem Internet "esquecida" de uma sessão anterior
         _client.ConnectionChanged += up => _ui.BeginInvoke((Action)(() =>
         {
             _disconnectedSince = up ? null : DateTime.UtcNow;
@@ -95,12 +102,13 @@ internal sealed class AgentApp : ApplicationContext
         }
 
         // failsafe: se o servidor desaparecer, não deixa a turma bloqueada para sempre
-        if (_disconnectedSince is { } since && (_lock != null || _broadcast != null) &&
+        if (_disconnectedSince is { } since && (_lock != null || _broadcast != null || _noInternet) &&
             DateTime.UtcNow - since > TimeSpan.FromMinutes(_client.FailsafeUnlockMinutes))
         {
             Log.Write("Failsafe: sem servidor há demasiado tempo, a desbloquear");
             Unlock();
             StopBroadcast();
+            if (_noInternet) SetInternet(true);
         }
 
         // muda o utilizador (login/logout) -> avisa o servidor
@@ -128,6 +136,13 @@ internal sealed class AgentApp : ApplicationContext
                 case "notice": ShowNotice(n); break;
                 case "noticeOff": ClearNotices(); break;
                 case "minimize": MinimizeAll(); break;
+                case "internet": SetInternet(n["on"]?.GetValue<bool>() ?? true); break;
+                case "closeAll": Classroom.CloseAll(_session); break;
+                case "fileStart": Classroom.FileStart(n["id"]?.GetValue<string>() ?? "", n["name"]?.GetValue<string>() ?? "ficheiro"); break;
+                case "fileEnd": FileReceived(n["id"]?.GetValue<string>() ?? ""); break;
+                case "collect": _ = Classroom.Collect(_client, n["batch"]?.GetValue<string>() ?? "entrega"); break;
+                case "poll": ShowPoll(n); break;
+                case "pollClose": ClosePoll(n["id"]?.GetValue<string>() ?? ""); break;
                 case "mute": SetMute(n["on"]?.GetValue<bool>() ?? true); break;
                 case "openUrl": OpenUrl(n["url"]?.GetValue<string>() ?? ""); break;
                 case "broadcastStart": StartBroadcast(n["from"]?.GetValue<string>() ?? "professor"); break;
@@ -317,6 +332,41 @@ internal sealed class AgentApp : ApplicationContext
         form.FormClosed += (_, _) => _notices.Remove(form);
         _notices.Add(form);
         form.Show();
+    }
+
+    private void SetInternet(bool on)
+    {
+        _noInternet = !on;
+        if (Program.RunningAsSystem) Classroom.SetInternet(on);
+        if (!on) ShowNotice(JsonNode.Parse("{\"text\":\"🌐 A Internet foi desligada pelo professor\",\"color\":\"#2b2f44\",\"style\":\"corner\",\"seconds\":8}")!);
+    }
+
+    private void FileReceived(string id)
+    {
+        var path = Classroom.FileEnd(id);
+        if (path == null) return;
+        var name = Path.GetFileName(path);
+        ShowNotice(JsonNode.Parse(
+            $"{{\"text\":{System.Text.Json.JsonSerializer.Serialize("📁 Recebeste: " + name)},\"color\":\"#12a372\",\"style\":\"corner\",\"seconds\":10}}")!);
+        Classroom.OpenFolder(Classroom.ReceivedDir, _session);
+    }
+
+    private void ShowPoll(JsonNode n)
+    {
+        var id = n["id"]?.GetValue<string>() ?? "";
+        var options = (n["options"] as JsonArray)?.Select(o => o?.GetValue<string>() ?? "").Where(o => o.Length > 0).ToArray() ?? Array.Empty<string>();
+        if (options.Length < 2) return;
+        ClosePoll(id);
+        var f = new PollForm(id, n["question"]?.GetValue<string>() ?? "", options,
+            choice => _client.Post(new { type = "answer", poll = id, choice }));
+        f.FormClosed += (_, _) => _polls.Remove(f);
+        _polls.Add(f);
+        f.Show();
+    }
+
+    private void ClosePoll(string id)
+    {
+        foreach (var f in _polls.Where(p => p.PollId == id).ToList()) { f.Close(); f.Dispose(); }
     }
 
     private void RunEndAction(string action, string? text, Color? color, int seconds)

@@ -102,7 +102,7 @@
 
   // ================================================================== menu do utilizador
   $("#userBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#userMenu").hidden = !$("#userMenu").hidden; });
-  document.addEventListener("click", () => { $("#userMenu").hidden = true; $("#ctx").hidden = true; });
+  document.addEventListener("click", () => { $("#userMenu").hidden = true; $("#ctx").hidden = true; const mm = $("#moreMenu"); if (mm) mm.hidden = true; });
   $("#userMenu").addEventListener("click", (e) => {
     const act = e.target.closest("button")?.dataset.act;
     if (act === "logout") logout();
@@ -159,6 +159,10 @@
       case "chat": onIncoming(m.id, m.user, m.text, false); break;
       case "hand": onHand(m.id, m.user); break;
       case "catalogChanged": loadCatalog(); break;
+      case "collectBatch": state.collectBatch = m.batch; state.collectWaiting = 0; break;
+      case "collected": onCollected(m); break;
+      case "pollStarted": onPollStarted(m); break;
+      case "answer": onAnswer(m); break;
     }
   }
 
@@ -256,11 +260,20 @@
       else if ((info.key || `${info.school || ""}/${info.room}`) !== f) return false;
     }
     if (state.search) {
-      const hay = `${info.hostname} ${info.user} ${info.id} ${info.room}`.toLowerCase();
+      const hay = `${info.hostname} ${info.user} ${info.userName || ""} ${info.id} ${info.room}`.toLowerCase();
       if (!hay.includes(state.search)) return false;
     }
     return true;
   }
+
+  /** Nome de quem tem sessão: nome completo do AD; senão a conta sem domínio; senão "sem sessão". */
+  function personName(info) {
+    if (info.userName) return info.userName;
+    if (info.user) return info.user.split("\\").pop();
+    return "— sem sessão —";
+  }
+
+  $("#moreBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#moreMenu").hidden = !$("#moreMenu").hidden; });
 
   // ================================================================== grelha
   function upsertAgent(info) {
@@ -270,7 +283,7 @@
       el.className = "pc";
       el.tabIndex = 0;
       el.innerHTML = `<div class="shot"><img alt="" hidden><span class="noimg">sem imagem</span></div>
-        <div class="badges"></div><div class="meta"><span class="name"></span><span class="user"></span></div>`;
+        <div class="badges"></div><div class="meta"><span class="person"></span><span class="host"></span></div>`;
       el.addEventListener("click", (e) => { if (e.detail <= 1) toggleSelect(info.id, e.shiftKey || e.ctrlKey || e.metaKey); });
       el.addEventListener("dblclick", () => openViewer(info.id));
       el.addEventListener("keydown", (e) => { if (e.key === "Enter") openViewer(info.id); });
@@ -279,12 +292,14 @@
       state.agents.set(info.id, a);
     }
     a.info = info;
-    a.el.querySelector(".name").textContent = info.hostname || info.id;
-    a.el.querySelector(".user").textContent = `${info.user || "sem sessão"} · ${info.room || "sem sala"}`;
+    a.el.querySelector(".person").textContent = personName(info);
+    a.el.querySelector(".host").textContent = `${info.hostname || info.id} · ${info.room || "sem sala"}`;
     a.el.title = `${info.id} · ${info.ip} · ${info.os}\n${schoolName(info.school)} · ${info.room}`;
     a.el.dataset.key = info.hostname || info.id;
     const b = a.el.querySelector(".badges");
     b.innerHTML = (info.locked ? `<span class="badge lock">🔒 BLOQUEADO</span>` : "") +
+      (info.noInternet ? `<span class="badge net">🚫 SEM NET</span>` : "") +
+      (info.demo ? `<span class="badge demo">🎬 EM DEMONSTRAÇÃO</span>` : "") +
       (info.broadcasting ? `<span class="badge share">📺 A VER</span>` : "");
     placeSorted(a.el);
   }
@@ -365,6 +380,18 @@
         toast(`⌨ Texto enviado para ${ids.size} PC(s)`);
       });
       case "procs": return openProcs([...ids][0]);
+      case "internetOff": cmd("internetOff", ids); return toast(`🚫 Internet cortada em ${ids.size} PC(s)`);
+      case "internetOn": cmd("internetOn", ids); return toast(`🌐 Internet reposta em ${ids.size} PC(s)`);
+      case "closeAll":
+        if (confirm(`Fechar todos os programas em ${ids.size} PC(s)?\nO trabalho não guardado perde-se.`)) cmd("closeAll", ids);
+        return;
+      case "sendFile": return pickAndSend(ids);
+      case "collect":
+        cmd("collect", ids);
+        state.collectWaiting = ids.size;
+        return toast(`📥 A recolher trabalhos de ${ids.size} PC(s)…`);
+      case "poll": return openPoll(ids);
+      case "demo": return startDemo([...ids][0]);
       case "chat": return openThread([...ids][0]);
       case "notice": return openDialog("#noticeDialog", ids, (f) => {
         const endAction = f.get("endAction") || "";
@@ -390,18 +417,21 @@
   });
 
   // menu de contexto (botão direito num PC)
-  let ctxIds = [];
+  let ctxIds = [], ctxOne = null;
   function openCtx(id, x, y) {
+    ctxOne = id;
     ctxIds = state.selected.has(id) && state.selected.size > 1 ? [...state.selected] : [id];
     const m = $("#ctx");
     m.hidden = false;
     m.style.left = Math.min(x, innerWidth - m.offsetWidth - 8) + "px";
     m.style.top = Math.min(y, innerHeight - m.offsetHeight - 8) + "px";
-    for (const b of $$("[data-ctx=view],[data-ctx=procs]", m)) b.disabled = ctxIds.length > 1;
+    // ver, programas, conversar e demonstração dizem respeito ao PC em que se clicou (não à seleção)
+    for (const b of $$("[data-ctx=view],[data-ctx=procs],[data-ctx=demo],[data-ctx=chat]", m)) b.disabled = false;
   }
   $("#ctx").addEventListener("click", (e) => {
     const act = e.target.closest("button")?.dataset.ctx;
-    if (act) runAction(act, ctxIds);
+    if (!act) return;
+    runAction(act, ["view", "procs", "demo", "chat"].includes(act) ? [ctxOne] : ctxIds);
   });
 
   // diálogo genérico com formulário
@@ -890,6 +920,145 @@
       toast("🏫 Salas guardadas");
       loadCatalog();
     } catch (err) { $("[data-error]", $("#roomsDialog")).textContent = err.message; }
+  });
+
+  // ================================================================== enviar ficheiro
+  let sendTargets = null;
+  function pickAndSend(ids) {
+    sendTargets = new Set(ids);
+    $("#filePick").value = "";
+    $("#filePick").click();
+  }
+  $("#filePick").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file || !sendTargets) return;
+    if (file.size > 100 * 1024 * 1024) return toast("Ficheiro demasiado grande (máximo 100 MB)");
+    toast(`📁 A enviar "${file.name}"…`);
+    try {
+      const r = await fetch("/api/files", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + state.token, "X-File-Name": encodeURIComponent(file.name) },
+        body: file,
+      });
+      if (!r.ok) throw new Error(`Erro ${r.status}`);
+      const j = await r.json();
+      cmd("sendFile", sendTargets, { fileId: j.id });
+      toast(`📁 "${file.name}" enviado para ${sendTargets.size} PC(s)`);
+    } catch (err) { toast("Falhou o envio: " + err.message); }
+  });
+
+  // ================================================================== recolher trabalhos
+  function onCollected(m) {
+    const who = m.user || m.id;
+    toast(m.file ? `📥 Recebido o trabalho de ${who}` : `📥 ${who}: ${m.error}`);
+    if ($("#entregasDialog").open) loadEntregas();
+  }
+  $("#entregasBtn").addEventListener("click", () => { loadEntregas(); $("#entregasDialog").showModal(); });
+  $("#entregasRefresh").addEventListener("click", loadEntregas);
+  $("#entregasClose").addEventListener("click", () => $("#entregasDialog").close());
+
+  async function loadEntregas() {
+    let list = [];
+    try { list = await api("/api/entregas"); } catch (e) { return toast(e.message); }
+    const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.ceil(n / 1024) + " KB";
+    $("#entregasBody").innerHTML = list.length ? list.map((b) => `<div class="entrega-batch">
+        <h3>📦 ${esc(b.batch.replace("_", " às ").replace(/-(\d\d)$/, "h$1"))} <button data-batch="${esc(b.batch)}">⬇ Descarregar tudo (.zip)</button></h3>
+        <ul>${b.files.map((f) => `<li><a data-file="${esc(f.file)}">${esc(f.file.split("/").pop())}</a> <span class="muted small">${kb(f.size)}</span></li>`).join("") || "<li class='muted'>Sem entregas.</li>"}</ul>
+      </div>`).join("") : `<p class="muted">Ainda não recolheste trabalhos.</p>`;
+  }
+  $("#entregasBody").addEventListener("click", (e) => {
+    const f = e.target.closest("[data-file]")?.dataset.file;
+    const b = e.target.closest("[data-batch]")?.dataset.batch;
+    if (f) download(`/api/entregas/download?file=${encodeURIComponent(f)}`, f.split("/").pop());
+    if (b) download(`/api/entregas/download?batch=${encodeURIComponent(b)}`, `entregas-${b}.zip`);
+  });
+  async function download(url, name) {
+    try {
+      const r = await fetch(url, { headers: { Authorization: "Bearer " + state.token } });
+      if (!r.ok) throw new Error(`Erro ${r.status}`);
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch (err) { toast("Falhou: " + err.message); }
+  }
+
+  // ================================================================== pergunta rápida
+  const BAR_COLORS = ["#4f6bff", "#12a372", "#ffad1f", "#e5394f", "#6a3dff", "#00b8a3", "#ff5a6a", "#2b2f44"];
+  state.poll = null;
+  function openPoll(ids) {
+    openDialog("#pollDialog", ids, (f) => {
+      const options = String(f.get("options")).split("\n").map((o) => o.trim()).filter(Boolean).slice(0, 8);
+      if (options.length < 2) return toast("Indica pelo menos duas respostas");
+      cmd("poll", ids, { question: String(f.get("question")), options });
+    });
+  }
+  $("#pollPresets").addEventListener("click", (e) => {
+    const o = e.target.closest("[data-opts]")?.dataset.opts;
+    if (o) $("#pollDialog [name=options]").value = o.split("|").join("\n");
+  });
+  function onPollStarted(m) {
+    state.poll = { id: m.id, question: m.question, options: m.options, targets: new Set(m.targets), answers: new Map() };
+    renderPoll();
+    $("#pollResults").showModal();
+  }
+  function onAnswer(m) {
+    if (!state.poll || m.poll !== state.poll.id) return;
+    state.poll.answers.set(m.id, { user: m.user, choice: m.choice });
+    renderPoll();
+  }
+  function renderPoll() {
+    const p = state.poll;
+    if (!p) return;
+    $("#pollQ").textContent = p.question;
+    const total = p.answers.size;
+    $("#pollCount").textContent = `${total} de ${p.targets.size} responderam`;
+    $("#pollBars").innerHTML = p.options.map((o, i) => {
+      const n = [...p.answers.values()].filter((a) => a.choice === o).length;
+      const pct = total ? Math.round((n / total) * 100) : 0;
+      return `<div class="bar"><b>${esc(o)}</b><div class="track"><div class="fill" style="width:${pct}%;background:${BAR_COLORS[i % BAR_COLORS.length]}"></div></div><span>${n}</span></div>`;
+    }).join("");
+    $("#pollWho").innerHTML = [...p.answers.entries()].map(([id, a]) =>
+      `<tr><td>${esc(a.user || id)}</td><td class="muted">${esc(state.agents.get(id)?.info.hostname || id)}</td><td><strong>${esc(a.choice)}</strong></td></tr>`).join("");
+  }
+  $("#pollHide").addEventListener("click", () => $("#pollResults").close());
+  $("#pollEnd").addEventListener("click", () => {
+    if (state.poll) cmd("pollClose", state.poll.targets, { poll: state.poll.id });
+    $("#pollResults").close();
+  });
+
+  // ================================================================== mostrar o ecrã de um aluno à turma
+  function startDemo(sourceId) {
+    const viewers = visibleIds().filter((id) => id !== sourceId);
+    if (!viewers.length) return toast("Não há outros PCs nesta sala para ver a demonstração");
+    const src = state.agents.get(sourceId)?.info;
+    if (!confirm(`Mostrar o ecrã de ${src ? personName(src) : sourceId} aos outros ${viewers.length} PC(s) desta sala?`)) return;
+    cmd("demoStart", viewers, { source: sourceId });
+    $("#demoStopBtn").hidden = false;
+    toast("🎬 Demonstração iniciada");
+  }
+  $("#demoStopBtn").addEventListener("click", () => {
+    cmd("demoStop", visibleIds().length ? visibleIds() : [...state.agents.keys()]);
+    $("#demoStopBtn").hidden = true;
+    toast("🎬 Demonstração terminada");
+  });
+
+  // ================================================================== exportar lista (presenças)
+  $("#exportBtn").addEventListener("click", () => {
+    const rows = [["Escola", "Sala", "PC", "Nome", "Conta", "IP", "Bloqueado", "Sem Internet", "Hora"]];
+    const now = new Date().toLocaleString("pt-PT");
+    for (const id of visibleIds()) {
+      const i = state.agents.get(id).info;
+      rows.push([schoolName(i.school), i.room, i.hostname, i.userName || "", i.user || "", i.ip, i.locked ? "sim" : "não", i.noInternet ? "sim" : "não", now]);
+    }
+    rows.sort((a, b) => natural(a[2], b[2]));
+    const csv = "﻿" + rows.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `presencas-${(state.filter || "todas").replace(/[\/*]/g, "_")}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.csv`;
+    a.click();
   });
 
   // ================================================================== arranque

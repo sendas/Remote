@@ -66,7 +66,7 @@ public sealed class ServerConfig
     public bool AutoUpdate { get; set; } = true;
     public int UpdateCheckMinutes { get; set; } = 60;
     public string UpdateReleaseApi { get; set; } = "https://api.github.com/repos/sendas/Remote/releases/tags/auto";
-    public string UpdateAssetName { get; set; } = "SalaViva-Servidor.exe";
+    public string UpdateAssetName { get; set; } = "SalaViva-Servidor.zip";
 
     public static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -96,6 +96,9 @@ public sealed class ServerConfig
                       ?? throw new InvalidOperationException("Configuração inválida.");
             if (string.IsNullOrWhiteSpace(cfg.EnrollmentKey))
                 throw new InvalidOperationException("EnrollmentKey vazia em " + ConfigPath);
+            // versões antigas descarregavam só o .exe (sem a consola web)
+            if (cfg.UpdateAssetName.Equals("SalaViva-Servidor.exe", StringComparison.OrdinalIgnoreCase))
+                cfg.UpdateAssetName = "SalaViva-Servidor.zip";
             if (cfg.ConfigVersion < 2)
             {
                 // versão 1: "sem salas" queria dizer "todas" -> essas contas passam a administradores

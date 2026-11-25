@@ -17,7 +17,7 @@ public abstract class Connection
     public WebSocket Socket { get; }
     public string RemoteIp { get; }
 
-    private readonly ConcurrentQueue<byte[]> _control = new();
+    private readonly ConcurrentQueue<(byte[] Data, bool Binary)> _control = new();
     private readonly ConcurrentDictionary<string, byte[]> _frames = new();
     private readonly SemaphoreSlim _signal = new(0);
     private readonly CancellationTokenSource _cts = new();
@@ -32,7 +32,14 @@ public abstract class Connection
 
     public void SendJson(object msg)
     {
-        _control.Enqueue(JsonSerializer.SerializeToUtf8Bytes(msg, Hub.Json));
+        _control.Enqueue((JsonSerializer.SerializeToUtf8Bytes(msg, Hub.Json), false));
+        _signal.Release();
+    }
+
+    /// <summary>Dados binários que têm de chegar todos e por ordem (ex.: pedaços de um ficheiro).</summary>
+    public void SendOrdered(byte[] data)
+    {
+        _control.Enqueue((data, true));
         _signal.Release();
     }
 
@@ -50,15 +57,15 @@ public abstract class Connection
             while (!_cts.IsCancellationRequested && Socket.State == WebSocketState.Open)
             {
                 await _signal.WaitAsync(_cts.Token);
-                while (_control.TryDequeue(out var json))
-                    await Socket.SendAsync(json, WebSocketMessageType.Text, true, _cts.Token);
+                while (_control.TryDequeue(out var m))
+                    await Socket.SendAsync(m.Data, m.Binary ? WebSocketMessageType.Binary : WebSocketMessageType.Text, true, _cts.Token);
                 foreach (var key in _frames.Keys)
                 {
                     if (_frames.TryRemove(key, out var frame))
                         await Socket.SendAsync(frame, WebSocketMessageType.Binary, true, _cts.Token);
                     // dá prioridade ao controlo entre imagens
-                    while (_control.TryDequeue(out var json))
-                        await Socket.SendAsync(json, WebSocketMessageType.Text, true, _cts.Token);
+                    while (_control.TryDequeue(out var m))
+                        await Socket.SendAsync(m.Data, m.Binary ? WebSocketMessageType.Binary : WebSocketMessageType.Text, true, _cts.Token);
                 }
             }
         }
@@ -130,6 +137,8 @@ public sealed class AgentConnection : Connection
     public string Folder { get; set; } = "";
     public string Key => School + "/" + Room;
     public string User { get; set; } = "";
+    /// <summary>Nome completo de quem tem sessão (displayName do AD).</summary>
+    public string FullUserName { get; set; } = "";
     public string Os { get; set; } = "";
     public string Version { get; set; } = "";
     public DateTimeOffset ConnectedAt { get; } = DateTimeOffset.UtcNow;
@@ -137,6 +146,16 @@ public sealed class AgentConnection : Connection
     /// <summary>ConnId do professor cuja partilha de ecrã este PC está a receber.</summary>
     public string? BroadcastFrom { get; set; }
     public HashSet<string> Watchers { get; } = new();
+
+    /// <summary>Internet cortada neste PC (regra de firewall no agente).</summary>
+    public bool NoInternet { get; set; }
+    /// <summary>"Mostrar à turma": PCs que estão a ver o ecrã deste aluno, e a consola que o pediu.</summary>
+    public HashSet<string> DemoTargets { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? DemoBy { get; set; }
+    /// <summary>Recolha de trabalhos em curso (ficheiro zip a ser recebido).</summary>
+    public FileStream? Collect { get; set; }
+    public string? CollectPath { get; set; }
+    public string? CollectBatch { get; set; }
 
     /// <summary>Última miniatura recebida (enviada logo a professores que abram a consola depois).</summary>
     public byte[]? LastThumbPacket { get; set; }
@@ -156,11 +175,14 @@ public sealed class AgentConnection : Connection
         schoolName = SchoolName,
         key = Key,
         user = User,
+        userName = FullUserName,
         os = Os,
         version = Version,
         ip = RemoteIp,
         locked = Locked,
         broadcasting = BroadcastFrom != null,
+        noInternet = NoInternet,
+        demo = DemoTargets.Count > 0,
         connectedAt = ConnectedAt,
     };
 }

@@ -20,7 +20,7 @@ public sealed record TeacherSession(string Token, TeacherAccount Account, DateTi
 ///   servidor → agente   : 0x10 imagem da partilha
 /// Tudo o resto é JSON com campo "type".
 /// </summary>
-public sealed class Hub
+public sealed partial class Hub
 {
     public const byte Thumb = 0x01, Full = 0x02, Share = 0x10;
 
@@ -31,6 +31,7 @@ public sealed class Hub
         "lock", "unlock", "message", "openUrl", "logoff", "reboot", "shutdown",
         "broadcastStart", "broadcastStop", "watch", "unwatch", "input", "procs", "kill", "type",
         "chat", "notice", "noticeOff", "minimize", "mute",
+        "internetOff", "internetOn", "closeAll", "sendFile", "collect", "poll", "pollClose", "demoStart", "demoStop",
     };
 
     private readonly ServerConfig _cfg;
@@ -213,7 +214,9 @@ public sealed class Hub
             {
                 if (data.Count < 2) return;
                 var kind = data[0];
+                if (kind == CollectChunk) { HandleCollectChunk(agent, data); return; }
                 if (kind is not (Thumb or Full)) return;
+                if (kind == Full) ForwardDemo(agent, data.AsSpan(1));
                 var packet = BuildTeacherFrame(kind, agent.IdBytes, data.AsSpan(1));
                 var key = (kind == Thumb ? "t:" : "f:") + agent.Id;
                 if (kind == Thumb) agent.LastThumbPacket = packet;
@@ -277,7 +280,10 @@ public sealed class Hub
         a.SendJson(a.Locked ? new { type = "lock", text = (string?)null } : new { type = "unlock", text = (string?)null });
 
         _log.LogInformation("Agente ligado: {Id} ({User}) sala {Room} de {Ip}", a.Id, a.User, a.Room, a.RemoteIp);
+        lock (_gate) a.NoInternet = _noInternetIds.Contains(a.Id);
+        if (a.NoInternet) a.SendJson(new { type = "internet", on = false });
         BroadcastToTeachers(a, new { type = "agentJoined", agent = a.Describe() });
+        ResolveName(a);
         RefreshThumbs(a);
         return true;
     }
@@ -291,6 +297,9 @@ public sealed class Hub
             if (removed) _agents.Remove(a.Id);
         }
         if (!removed) return;
+        StopDemo(a);
+        try { a.Collect?.Dispose(); } catch { }
+        a.Collect = null;
         _log.LogInformation("Agente desligado: {Id}", a.Id);
         BroadcastToTeachers(a, new { type = "agentLeft", id = a.Id });
     }
@@ -303,7 +312,22 @@ public sealed class Hub
         {
             case "status":
                 a.User = Clean(n["user"]?.GetValue<string>(), 128);
+                a.FullUserName = "";
                 BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
+                ResolveName(a);
+                break;
+            case "collectStart":
+            case "collectEnd":
+                HandleCollectJson(a, n, n["type"]!.GetValue<string>());
+                break;
+            case "answer":
+                BroadcastToTeachers(a, new
+                {
+                    type = "answer", id = a.Id,
+                    user = a.FullUserName.Length > 0 ? a.FullUserName : a.User,
+                    poll = Clean(n["poll"]?.GetValue<string>(), 16),
+                    choice = Clean(n["choice"]?.GetValue<string>(), 60),
+                });
                 break;
             case "reply":
                 var text = Clean(n["text"]?.GetValue<string>(), 2000, allowNewlines: true);
@@ -378,6 +402,7 @@ public sealed class Hub
             }
             StopWatching(t, a);
         }
+        CleanupTeacherDemos(t);
         _audit.Write(t.Username, "consola-desligada", ip);
         RefreshThumbs();
         t.Abort();
@@ -411,6 +436,13 @@ public sealed class Hub
                   ?? new HashSet<string>();
         var targets = SnapshotAgents().Where(a => ids.Contains(a.Id) && t.MayControl(a)).ToList();
         if (targets.Count == 0) return;
+
+        if (action != "input" && action != "demoStart" && HandleClassroomAction(t, action, n, targets))
+        {
+            _audit.Write(t.Username, action, string.Join(",", targets.Select(a => a.Id)) + Summary(n));
+            return;
+        }
+        if (action == "demoStart") { _audit.Write(t.Username, action, n["source"]?.ToString() ?? ""); HandleClassroomAction(t, action, n, targets); return; }
 
         if (action != "input")
             _audit.Write(t.Username, action, string.Join(",", targets.Select(a => a.Id)) + Summary(n));

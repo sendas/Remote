@@ -141,6 +141,54 @@ app.MapGet("/api/catalog", (HttpContext ctx, Hub hub) =>
     return s == null ? Results.Unauthorized() : Results.Json(hub.CatalogFor(s));
 });
 
+// ---------- ficheiros para os alunos e entregas
+app.MapPost("/api/files", async (HttpContext ctx, Hub hub, Audit audit) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    var feat = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (feat != null && !feat.IsReadOnly) feat.MaxRequestBodySize = Hub.MaxFileBytes;
+    var name = Hub.SafeName(Uri.UnescapeDataString(ctx.Request.Headers["X-File-Name"].ToString()));
+    var id = Guid.NewGuid().ToString("N")[..16];
+    var dir = Path.Combine(Hub.FilesDir, id);
+    Directory.CreateDirectory(dir);
+    var path = Path.Combine(dir, name);
+    await using (var fs = File.Create(path))
+        await ctx.Request.Body.CopyToAsync(fs);
+    var size = new FileInfo(path).Length;
+    audit.Write(s.Username, "ficheiro-carregado", $"{name} ({size} bytes)");
+    return Results.Json(new { id, name, size });
+});
+
+app.MapGet("/api/entregas", (HttpContext ctx, Hub hub) =>
+{
+    if (Auth(ctx, hub) == null) return Results.Unauthorized();
+    var list = Directory.GetDirectories(Hub.CollectDir).OrderByDescending(d => d).Take(30).Select(d => new
+    {
+        batch = Path.GetFileName(d),
+        files = Directory.GetFiles(d, "*.zip", SearchOption.AllDirectories)
+            .Select(f => new { file = Path.GetRelativePath(Hub.CollectDir, f).Replace('\\', '/'), size = new FileInfo(f).Length })
+            .ToArray(),
+    });
+    return Results.Json(list);
+});
+
+app.MapGet("/api/entregas/download", (HttpContext ctx, Hub hub, string? file, string? batch) =>
+{
+    if (Auth(ctx, hub) == null) return Results.Unauthorized();
+    if (!string.IsNullOrEmpty(batch))
+    {
+        var zip = Hub.ZipBatch(batch);
+        if (zip == null) return Results.NotFound();
+        var bytes = File.ReadAllBytes(zip);
+        File.Delete(zip);
+        return Results.File(bytes, "application/zip", $"entregas-{Hub.SafeName(batch)}.zip");
+    }
+    var full = Path.GetFullPath(Path.Combine(Hub.CollectDir, file ?? ""));
+    if (!full.StartsWith(Path.GetFullPath(Hub.CollectDir)) || !File.Exists(full)) return Results.NotFound();
+    return Results.File(File.OpenRead(full), "application/zip", Path.GetFileName(full));
+});
+
 // ---------- administração: utilizadores
 app.MapGet("/api/users", (HttpContext ctx, Hub hub) =>
 {

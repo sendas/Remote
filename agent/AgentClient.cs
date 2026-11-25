@@ -22,6 +22,8 @@ internal sealed class AgentClient
 
     public event Action<JsonNode>? Command;
     public event Action<byte[]>? ShareFrame;
+    /// <summary>Pedaço de ficheiro enviado pelo professor: [16 bytes id][dados].</summary>
+    public event Action<byte[]>? FileChunk;
     public event Action<bool>? ConnectionChanged;
 
     public bool Connected => _ws?.State == WebSocketState.Open;
@@ -148,6 +150,8 @@ internal sealed class AgentClient
             {
                 if (ms.Length > 1 && ms.GetBuffer()[0] == Share)
                     { var all = ms.ToArray(); var f = new byte[all.Length - 1]; Buffer.BlockCopy(all, 1, f, 0, f.Length); ShareFrame?.Invoke(f); }
+                else if (ms.Length > 17 && ms.GetBuffer()[0] == 0x20)
+                    { var all = ms.ToArray(); var f = new byte[all.Length - 1]; Buffer.BlockCopy(all, 1, f, 0, f.Length); FileChunk?.Invoke(f); }
                 continue;
             }
 
@@ -191,6 +195,16 @@ internal sealed class AgentClient
     }
 
     public void Post(object msg) => _ = SendJson(msg);
+
+    /// <summary>Envia dados binários e espera (para ficheiros: não se pode perder nenhum pedaço).</summary>
+    public async Task SendBinary(byte[] pkt)
+    {
+        var ws = _ws;
+        if (ws == null) throw new IOException("Sem ligação ao servidor.");
+        await _sendLock.WaitAsync();
+        try { await ws.SendAsync(new ArraySegment<byte>(pkt), WebSocketMessageType.Binary, true, CancellationToken.None); }
+        finally { _sendLock.Release(); }
+    }
 
     /// <summary>Envia uma imagem; se ainda houver um envio em curso (rede lenta), descarta-a.</summary>
     private void TrySendFrame(byte kind, byte[] jpeg)
