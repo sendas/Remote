@@ -10,5 +10,5 @@ dotnet publish "$root\server\ClassroomServer.csproj" -c Release -r win-x64 --sel
 dotnet publish "$root\agent\ClassroomAgent.csproj" -c Release -o "$out\agent"
 
 Copy-Item "$root\deploy\install-server.ps1" "$out\server\"
-Copy-Item "$root\deploy\install-agent.ps1", "$root\deploy\uninstall-agent.ps1" "$out\agent\"
+Copy-Item "$root\deploy\install-agent.ps1", "$root\deploy\uninstall-agent.ps1", "$root\deploy\install-remote.ps1" "$out\agent\"
 Write-Host "`nPronto: $out" -ForegroundColor Green
