@@ -156,6 +156,7 @@ public sealed class AgentConnection : Connection
     public FileStream? Collect { get; set; }
     public string? CollectPath { get; set; }
     public string? CollectBatch { get; set; }
+    public string? CollectRequested { get; set; }
 
     /// <summary>Última miniatura recebida (enviada logo a professores que abram a consola depois).</summary>
     public byte[]? LastThumbPacket { get; set; }

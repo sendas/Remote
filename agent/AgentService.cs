@@ -36,6 +36,8 @@ public sealed class AgentService : ServiceBase
     {
         _stopping = true;
         KillChild();
+        // nunca deixar um PC sem Internet por o agente ter parado (desinstalação, atualização)
+        try { Classroom.SetInternet(true); } catch { }
         Log.Write("Serviço parado");
     }
 

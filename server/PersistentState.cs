@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace ClassroomServer;
 
@@ -12,7 +12,8 @@ public sealed class PersistentState
     public sealed record LockInfo(string? Text, string? Color, DateTimeOffset? Until)
     {
         public bool Expired => Until is { } u && u <= DateTimeOffset.UtcNow;
-        public int SecondsLeft => Until is { } u ? Math.Max(0, (int)(u - DateTimeOffset.UtcNow).TotalSeconds) : 0;
+        // nunca 0 enquanto houver um fim: 0 quer dizer "até o professor desbloquear"
+        public int SecondsLeft => Until is { } u ? Math.Max(1, (int)Math.Ceiling((u - DateTimeOffset.UtcNow).TotalSeconds)) : 0;
     }
 
     public sealed record SessionInfo(string Token, string Username, DateTimeOffset Expires);
@@ -44,6 +45,16 @@ public sealed class PersistentState
         lock (_gate)
         {
             if (info == null) _d.Locks.Remove(id); else _d.Locks[id] = info;
+            Save();
+        }
+    }
+
+    public void SetLocks(IEnumerable<string> ids, LockInfo? info)
+    {
+        lock (_gate)
+        {
+            foreach (var id in ids)
+                if (info == null) _d.Locks.Remove(id); else _d.Locks[id] = info;
             Save();
         }
     }
@@ -98,8 +109,7 @@ public sealed class PersistentState
         {
             var tmp = FilePath + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(_d));
-            File.Copy(tmp, FilePath, true);
-            File.Delete(tmp);
+            File.Move(tmp, FilePath, true);
         }
         catch { /* o estado é uma ajuda; nunca deve deitar abaixo o servidor */ }
     }

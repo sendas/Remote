@@ -55,7 +55,7 @@ internal sealed class AgentApp : ApplicationContext
         _client.Command += n => _ui.BeginInvoke((Action)(() => OnCommand(n)));
         _client.ShareFrame += OnShareFrame;
         _client.FileChunk += Classroom.FileChunk;
-        Classroom.EnsureFolders();
+        Classroom.EnsureFolders(fixAcl: true);
         if (Program.RunningAsSystem) Classroom.SetInternet(true); // nunca fica sem Internet "esquecida" de uma sessão anterior
         _client.ConnectionChanged += up => _ui.BeginInvoke((Action)(() =>
         {
@@ -138,8 +138,7 @@ internal sealed class AgentApp : ApplicationContext
                 case "minimize": MinimizeAll(); break;
                 case "internet": SetInternet(n["on"]?.GetValue<bool>() ?? true); break;
                 case "closeAll": Classroom.CloseAll(_session); break;
-                case "fileStart": Classroom.FileStart(n["id"]?.GetValue<string>() ?? "", n["name"]?.GetValue<string>() ?? "ficheiro"); break;
-                case "fileEnd": FileReceived(n["id"]?.GetValue<string>() ?? ""); break;
+                case "fileReceived": FileReceived(n["path"]?.GetValue<string>() ?? ""); break;
                 case "collect": _ = Classroom.Collect(_client, n["batch"]?.GetValue<string>() ?? "entrega"); break;
                 case "poll": ShowPoll(n); break;
                 case "pollClose": ClosePoll(n["id"]?.GetValue<string>() ?? ""); break;
@@ -341,10 +340,9 @@ internal sealed class AgentApp : ApplicationContext
         if (!on) ShowNotice(JsonNode.Parse("{\"text\":\"🌐 A Internet foi desligada pelo professor\",\"color\":\"#2b2f44\",\"style\":\"corner\",\"seconds\":8}")!);
     }
 
-    private void FileReceived(string id)
+    private void FileReceived(string path)
     {
-        var path = Classroom.FileEnd(id);
-        if (path == null) return;
+        if (path.Length == 0) return;
         var name = Path.GetFileName(path);
         ShowNotice(JsonNode.Parse(
             $"{{\"text\":{System.Text.Json.JsonSerializer.Serialize("📁 Recebeste: " + name)},\"color\":\"#12a372\",\"style\":\"corner\",\"seconds\":10}}")!);

@@ -40,6 +40,12 @@ if ($Uninstall) {
     sc.exe \\$pc stop ClassroomAgent | Out-Null
     Start-Sleep 3
     sc.exe \\$pc delete ClassroomAgent | Out-Null
+    # remove a regra "Sem Internet" no PC remoto, se tiver ficado para trás
+    $env:SALA_PC = $pc
+    sc.exe --% \\%SALA_PC% create SalaVivaNet binPath= "cmd /c netsh advfirewall firewall delete rule name=\"SalaViva - Sem Internet\"" start= demand
+    sc.exe \\$pc start SalaVivaNet | Out-Null
+    Start-Sleep 3
+    sc.exe \\$pc delete SalaVivaNet | Out-Null
     Remove-Item $prog, $data -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "   Removido." -ForegroundColor Green
     return

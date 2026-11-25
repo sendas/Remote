@@ -14,17 +14,31 @@ internal static class Classroom
     public static string ReceivedDir => Path.Combine(BaseDir, "Recebidos do professor");
     public static string HandInDir => Path.Combine(BaseDir, "Entregar ao professor");
 
-    public static void EnsureFolders()
+    /// <summary>
+    /// Cria as pastas e garante que são pastas verdadeiras (não "junções" criadas por um aluno para
+    /// fazer o agente, que corre como SYSTEM, escrever ou ler noutro sítio).
+    /// Permissões: a pasta SalaViva só pode ser lida pelos alunos (não a podem apagar nem trocar);
+    /// dentro dela, "Recebidos" e "Entregar" podem ser alteradas.
+    /// </summary>
+    public static void EnsureFolders(bool fixAcl = false)
     {
         try
         {
-            Directory.CreateDirectory(ReceivedDir);
-            Directory.CreateDirectory(HandInDir);
-            // garante que qualquer utilizador do PC consegue gravar na pasta de entregas
-            Run("icacls.exe", $"\"{BaseDir}\" /grant *S-1-5-32-545:(OI)(CI)M");
+            foreach (var d in new[] { BaseDir, ReceivedDir, HandInDir })
+            {
+                if (IsLink(d)) { Log.Write("Pasta trocada por uma ligação, a repor: " + d); Directory.Delete(d); }
+                Directory.CreateDirectory(d);
+            }
+            if (!fixAcl) return;
+            Run("icacls.exe", $"\"{BaseDir}\" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX");
+            Run("icacls.exe", $"\"{ReceivedDir}\" /grant *S-1-5-32-545:(OI)(CI)M");
+            Run("icacls.exe", $"\"{HandInDir}\" /grant *S-1-5-32-545:(OI)(CI)M");
         }
         catch (Exception ex) { Log.Write("Pastas SalaViva: " + ex.Message); }
     }
+
+    private static bool IsLink(string path) =>
+        Directory.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 
     // ------------------------------------------------------------------ Internet
 
@@ -84,7 +98,7 @@ internal static class Classroom
 
     public static void FileStart(string id, string name)
     {
-        EnsureFolders();
+        EnsureFolders(); // rápido: só verifica/cria pastas (sem icacls)
         var safe = string.Concat(name.Select(c => System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
         var path = System.IO.Path.Combine(ReceivedDir, safe);
         // não apaga um ficheiro que o aluno já tenha: acrescenta (1), (2)...
@@ -132,14 +146,16 @@ internal static class Classroom
         try
         {
             EnsureFolders();
-            var files = Directory.GetFiles(HandInDir, "*", SearchOption.AllDirectories);
-            if (files.Length == 0)
+            var files = SafeFiles(HandInDir).ToList();
+            if (files.Count == 0)
             {
                 await client.SendJson(new { type = "collectEnd", ok = false, error = "pasta de entregas vazia" });
                 return;
             }
             zip = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"salaviva-{Guid.NewGuid():N}.zip");
-            ZipFile.CreateFromDirectory(HandInDir, zip);
+            using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
+                foreach (var f in files)
+                    z.CreateEntryFromFile(f, f.Substring(HandInDir.Length).TrimStart('\\'));
             if (new FileInfo(zip).Length > 100L * 1024 * 1024)
             {
                 await client.SendJson(new { type = "collectEnd", ok = false, error = "trabalho com mais de 100 MB" });
@@ -161,7 +177,7 @@ internal static class Classroom
                 }
             }
             await client.SendJson(new { type = "collectEnd", ok = true });
-            Log.Write($"Entrega enviada ({files.Length} ficheiros)");
+            Log.Write($"Entrega enviada ({files.Count} ficheiros)");
         }
         catch (Exception ex)
         {
@@ -171,6 +187,31 @@ internal static class Classroom
         finally
         {
             if (zip != null) try { File.Delete(zip); } catch { }
+        }
+    }
+
+    /// <summary>Ficheiros da pasta, sem seguir junções/ligações (um aluno não pode "entregar" pastas do sistema).</summary>
+    private static IEnumerable<string> SafeFiles(string dir)
+    {
+        var stack = new Stack<string>();
+        stack.Push(dir);
+        long total = 0;
+        while (stack.Count > 0)
+        {
+            var d = stack.Pop();
+            string[] subdirs, files;
+            try { subdirs = Directory.GetDirectories(d); files = Directory.GetFiles(d); } catch { continue; }
+            foreach (var f in files)
+            {
+                FileInfo fi;
+                try { fi = new FileInfo(f); } catch { continue; }
+                if ((fi.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                total += fi.Length;
+                if (total > 100L * 1024 * 1024) yield break;
+                yield return f;
+            }
+            foreach (var s in subdirs)
+                if ((File.GetAttributes(s) & FileAttributes.ReparsePoint) == 0) stack.Push(s);
         }
     }
 

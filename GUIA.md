@@ -123,12 +123,17 @@ Atalhos: clique seleciona; **Ctrl/Cmd + clique** seleciona vários; **duplo cliq
 | "falta o .NET Framework 4.8" | Windows 7 sem .NET 4.8: instala-o nesse PC (Windows Update ou instalador offline) |
 | Aparece a conta em vez do nome | A conta não tem "Nome a apresentar" no AD — preenche-o em Utilizadores e Computadores do AD |
 | "Sem Internet" não corta | A escola usa um proxy interno? Nesse caso o corte tem de ser feito no proxy/firewall da escola |
+| Uma turma ficou presa num ecrã partilhado | Basta o PC voltar a ligar-se ao servidor (ou reiniciar o serviço do servidor): o ecrã fecha-se sozinho |
+| Um PC ficou sem Internet depois de tirar o agente | No servidor: `.\install-remote.ps1 -Computer NOME-DO-PC -Uninstall` (remove também a regra) |
 | O serviço não para | `Set-Service ClassroomServer -StartupType Disabled` e depois `taskkill /F /IM ClassroomServer.exe` |
 
 ## 8. Atualizações automáticas
 
-- O servidor verifica **de hora a hora** a release do GitHub e, se houver versão nova, atualiza o programa
-  e a consola web e reinicia-se sozinho (cerca de 1 minuto sem consola).
+- O servidor verifica **de hora a hora** a release do GitHub. Se houver versão nova, atualiza o programa e
+  a consola web e reinicia-se sozinho — **só entre as 20h e as 7h e sem nenhuma consola aberta**, para nunca
+  interromper uma aula (muda-se em `"UpdateWindow"`). O reinício demora cerca de 1 minuto.
+- **Um reinício não estraga a aula:** PCs bloqueados continuam bloqueados (mesmo texto, cor e tempo), a Internet
+  continua cortada onde estava, e os professores não têm de voltar a entrar.
 - Forçar já: `C:\ClassroomServer\ClassroomServer.exe update`
 - Desligar: em `C:\ClassroomServer\data\classroom-server.json`, `"AutoUpdate": false`.
 - **Windows Server 2008 R2:** a ligação ao GitHub precisa de TLS 1.2. Se o comando `update` disser que

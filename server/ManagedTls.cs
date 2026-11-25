@@ -1,4 +1,4 @@
-using System.IO.Pipelines;
+﻿using System.IO.Pipelines;
 using Microsoft.AspNetCore.Connections;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Pkcs;
@@ -38,8 +38,16 @@ public sealed class ManagedTls
         var protocol = new TlsServerProtocol(raw);
         try
         {
-            // o BouncyCastle é síncrono: o handshake corre numa thread do pool
-            await Task.Run(() => protocol.Accept(new Server(_key, _chain)));
+            // o BouncyCastle é síncrono: o handshake corre numa thread do pool.
+            // Com prazo de 15 s: uma ligação que abre e não diz nada não pode prender threads para sempre.
+            var accept = Task.Run(() => protocol.Accept(new Server(_key, _chain)));
+            if (await Task.WhenAny(accept, Task.Delay(TimeSpan.FromSeconds(15))) != accept)
+            {
+                ctx.Abort(); // fecha o transporte: a leitura bloqueada no handshake termina com erro
+                _ = accept.ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+                return;
+            }
+            await accept;
         }
         catch (Exception ex)
         {

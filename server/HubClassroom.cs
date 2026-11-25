@@ -109,7 +109,7 @@ public sealed partial class Hub
             case "collect":
                 var batch = DateTime.Now.ToString("yyyy-MM-dd_HH-mm");
                 t.SendJson(new { type = "collectBatch", batch });
-                foreach (var a in targets) a.SendJson(new { type = "collect", batch });
+                foreach (var a in targets) { a.CollectRequested = batch; a.SendJson(new { type = "collect", batch }); }
                 return true;
 
             case "poll":
@@ -152,7 +152,9 @@ public sealed partial class Hub
                 return true;
 
             case "demoStop":
-                foreach (var a in SnapshotAgents().Where(a => a.DemoTargets.Count > 0 && t.MayControl(a))) StopDemo(a);
+                foreach (var a in SnapshotAgents().Where(a => a.DemoBy != null && t.MayControl(a) &&
+                                                             (a.DemoBy == t.ConnId || t.Session.Account.IsAdmin)))
+                    StopDemo(a);
                 return true;
         }
         return false;
@@ -185,12 +187,17 @@ public sealed partial class Hub
     /// <summary>Imagem em grande do aluno que está a ser mostrado à turma -> vai para os PCs da turma.</summary>
     private void ForwardDemo(AgentConnection src, ReadOnlySpan<byte> jpeg)
     {
-        if (src.DemoTargets.Count == 0) return;
+        HashSet<string> targets;
+        lock (_gate)
+        {
+            if (src.DemoTargets.Count == 0) return;
+            targets = new HashSet<string>(src.DemoTargets, StringComparer.OrdinalIgnoreCase);
+        }
         var pkt = new byte[jpeg.Length + 1];
         pkt[0] = Share;
         jpeg.CopyTo(pkt.AsSpan(1));
         foreach (var a in SnapshotAgents())
-            if (src.DemoTargets.Contains(a.Id) && a.BroadcastFrom == "demo:" + src.Id)
+            if (targets.Contains(a.Id) && a.BroadcastFrom == "demo:" + src.Id)
                 a.SendFrame("share", pkt);
     }
 
@@ -239,7 +246,12 @@ public sealed partial class Hub
         if (type == "collectStart")
         {
             a.Collect?.Dispose();
-            var batch = SafeName(n["batch"]?.GetValue<string>() ?? "entrega");
+            a.Collect = null;
+            // só aceita entregas que o servidor pediu (um agente não pode encher o disco por iniciativa própria)
+            var asked = a.CollectRequested;
+            a.CollectRequested = null;
+            if (asked == null || asked != (n["batch"]?.GetValue<string>() ?? "")) return;
+            var batch = SafeName(asked);
             // entregas/<recolha>/<escola>/<sala>/<PC - aluno>.zip  (permite filtrar por permissões)
             var dir = Path.Combine(CollectDir, batch, SafeName(a.School.Length > 0 ? a.School : "_"), SafeName(a.Room.Length > 0 ? a.Room : "_"));
             Directory.CreateDirectory(dir);
@@ -293,18 +305,12 @@ public sealed partial class Hub
         Directory.GetFiles(batchDir, "*.zip", SearchOption.AllDirectories)
             .Select(f => Path.GetRelativePath(CollectDir, f).Replace('\\', '/'));
 
-    /// <summary>Zip com as entregas de uma recolha que este professor pode ver (para "Descarregar tudo").</summary>
-    public static string? ZipBatch(string batch, TeacherAccount acc)
+    /// <summary>Entregas de uma recolha que este professor pode ver (para "Descarregar tudo").</summary>
+    public static List<string> VisibleEntregas(string batch, TeacherAccount acc)
     {
         var dir = Path.Combine(CollectDir, SafeName(batch));
-        if (!Directory.Exists(dir)) return null;
-        var files = EntregasOf(dir).Where(r => CanSeeEntrega(acc, r)).ToList();
-        if (files.Count == 0) return null;
-        var zip = Path.Combine(Path.GetTempPath(), $"entregas-{SafeName(batch)}-{Guid.NewGuid():N}.zip");
-        using (var z = ZipFile.Open(zip, ZipArchiveMode.Create))
-            foreach (var r in files)
-                z.CreateEntryFromFile(Path.Combine(CollectDir, r), r.Substring(r.IndexOf('/') + 1));
-        return zip;
+        if (!Directory.Exists(dir)) return new List<string>();
+        return EntregasOf(dir).Where(r => CanSeeEntrega(acc, r)).ToList();
     }
 
     /// <summary>Apaga ficheiros enviados aos alunos com mais de 7 dias e entregas com mais de 180 dias.</summary>

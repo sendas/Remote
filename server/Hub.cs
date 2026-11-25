@@ -75,6 +75,7 @@ public sealed partial class Hub
             foreach (var a in SnapshotAgents().Where(a => ids.Contains(a.Id, StringComparer.OrdinalIgnoreCase)))
             {
                 a.Locked = false;
+                a.SendJson(new { type = "unlock", text = (string?)null });
                 BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
             }
         }
@@ -236,8 +237,12 @@ public sealed partial class Hub
         var writer = agent.WriterLoop();
         var registered = false;
 
+        try
+        {
         await agent.ReadLoop(4 * 1024 * 1024, async (type, data) =>
         {
+          try
+          {
             if (!registered)
             {
                 if (type != WebSocketMessageType.Text || !TryRegisterAgent(agent, Connection.Utf8(data)))
@@ -267,10 +272,19 @@ public sealed partial class Hub
 
             HandleAgentJson(agent, Connection.Utf8(data));
             await Task.CompletedTask;
+          }
+          catch (Exception ex) when (ex is not OperationCanceledException)
+          {
+            // uma mensagem mal formada (ou disco cheio) não pode deitar abaixo a ligação nem saltar a limpeza
+            _log.LogDebug("Agente {Id}: {Msg}", agent.Id, ex.Message);
+          }
         });
-
-        if (registered) UnregisterAgent(agent);
-        agent.Abort();
+        }
+        finally
+        {
+            if (registered) UnregisterAgent(agent);
+            agent.Abort();
+        }
         await writer;
     }
 
@@ -316,6 +330,14 @@ public sealed partial class Hub
             failsafeUnlockMinutes = _cfg.AgentFailsafeUnlockMinutes,
         });
         // repõe o bloqueio se o aluno tinha sido bloqueado antes de perder a ligação
+        // ligação nova = ninguém lhe está a partilhar nada: se ficou um ecrã partilhado/demonstração
+        // pendurado (ex.: servidor reiniciou a meio), o PC fecha-o e o teclado volta
+        a.SendJson(new { type = "broadcastStop" });
+        // professores que estavam a ver este PC em grande continuam a ver (a ligação antiga caiu)
+        lock (_gate)
+            foreach (var tw in _teachers.Values.Where(tw => tw.Watching.Contains(a.Id)))
+                a.Watchers.Add(tw.ConnId);
+        if (a.Watchers.Count > 0) a.SendJson(new { type = "stream", on = true, fps = _cfg.FullFrameFps });
         var li = _state.GetLock(a.Id);
         if (li != null) a.SendJson(new { type = "lock", text = li.Text, color = li.Color, seconds = li.SecondsLeft });
         else a.SendJson(new { type = "unlock", text = (string?)null });
@@ -339,10 +361,10 @@ public sealed partial class Hub
             removed = _agents.TryGetValue(a.Id, out var cur) && ReferenceEquals(cur, a);
             if (removed) _agents.Remove(a.Id);
         }
-        if (!removed) return;
         StopDemo(a);
         try { a.Collect?.Dispose(); } catch { }
         a.Collect = null;
+        if (!removed) return;
         _log.LogInformation("Agente desligado: {Id}", a.Id);
         BroadcastToTeachers(a, new { type = "agentLeft", id = a.Id });
     }
@@ -428,32 +450,45 @@ public sealed partial class Hub
         foreach (var a in SnapshotAgents().Where(t.MayControl))
             if (a.LastThumbPacket is { } p) t.SendFrame("t:" + a.Id, p);
 
-        await t.ReadLoop(8 * 1024 * 1024, (type, data) =>
+        try
         {
-            if (type == WebSocketMessageType.Binary)
+            await t.ReadLoop(8 * 1024 * 1024, (type, data) =>
             {
-                if (data.Count > 1 && data[0] == Share) ForwardShare(t, data);
+                try
+                {
+                    if (type == WebSocketMessageType.Binary)
+                    {
+                        if (data.Count > 1 && data[0] == Share) ForwardShare(t, data);
+                        return Task.CompletedTask;
+                    }
+                    HandleTeacherJson(t, Connection.Utf8(data));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _log.LogDebug("Consola {User}: {Msg}", t.Username, ex.Message);
+                }
                 return Task.CompletedTask;
-            }
-            HandleTeacherJson(t, Connection.Utf8(data));
-            return Task.CompletedTask;
-        });
-
-        // limpeza: parar partilha e streams que este professor tinha abertos
-        lock (_gate) _teachers.Remove(t.ConnId);
-        foreach (var a in SnapshotAgents())
-        {
-            if (a.BroadcastFrom == t.ConnId)
-            {
-                a.BroadcastFrom = null;
-                a.SendJson(new { type = "broadcastStop" });
-            }
-            StopWatching(t, a);
+            });
         }
-        CleanupTeacherDemos(t);
-        _audit.Write(t.Username, "consola-desligada", ip);
-        RefreshThumbs();
-        t.Abort();
+        finally
+        {
+            // limpeza: parar partilha e streams que este professor tinha abertos
+            lock (_gate) _teachers.Remove(t.ConnId);
+            foreach (var a in SnapshotAgents())
+            {
+                if (a.BroadcastFrom == t.ConnId)
+                {
+                    a.BroadcastFrom = null;
+                    a.SendJson(new { type = "broadcastStop" });
+                    BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
+                }
+                StopWatching(t, a);
+            }
+            CleanupTeacherDemos(t);
+            _audit.Write(t.Username, "consola-desligada", ip);
+            RefreshThumbs();
+            t.Abort();
+        }
         await writer;
     }
 
@@ -505,7 +540,7 @@ public sealed partial class Hub
                     ? new PersistentState.LockInfo(Clean(n["text"]?.GetValue<string>(), 300), Clean(n["color"]?.GetValue<string>(), 7),
                         lockSecs > 0 ? DateTimeOffset.UtcNow.AddSeconds(lockSecs) : null)
                     : null;
-                foreach (var a in targets) _state.SetLock(a.Id, lockInfo);
+                _state.SetLocks(targets.Select(a => a.Id), lockInfo);
                 foreach (var a in targets)
                 {
                     a.Locked = lockIt;
@@ -550,7 +585,7 @@ public sealed partial class Hub
                 break;
 
             case "broadcastStop":
-                foreach (var a in targets.Where(a => a.BroadcastFrom != null))
+                foreach (var a in targets)
                 {
                     a.BroadcastFrom = null;
                     a.SendJson(new { type = "broadcastStop" });

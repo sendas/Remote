@@ -155,8 +155,17 @@ app.MapPost("/api/files", async (HttpContext ctx, Hub hub, Audit audit) =>
     var dir = Path.Combine(Hub.FilesDir, id);
     Directory.CreateDirectory(dir);
     var path = Path.Combine(dir, name);
-    await using (var fs = File.Create(path))
+    try
+    {
+        await using var fs = File.Create(path);
         await ctx.Request.Body.CopyToAsync(fs);
+    }
+    catch
+    {
+        // envio interrompido ou maior que o limite: não deixa restos no disco
+        try { Directory.Delete(dir, true); } catch { }
+        return Results.BadRequest();
+    }
     var size = new FileInfo(path).Length;
     audit.Write(s.Username, "ficheiro-carregado", $"{name} ({size} bytes)");
     return Results.Json(new { id, name, size });
@@ -182,11 +191,24 @@ app.MapGet("/api/entregas/download", (HttpContext ctx, Hub hub, string? file, st
     if (s == null) return Results.Unauthorized();
     if (!string.IsNullOrEmpty(batch))
     {
-        var zip = Hub.ZipBatch(batch, s.Account);
-        if (zip == null) return Results.NotFound();
-        var bytes = File.ReadAllBytes(zip);
-        File.Delete(zip);
-        return Results.File(bytes, "application/zip", $"entregas-{Hub.SafeName(batch)}.zip");
+        // ZIP num ficheiro temporário que o Windows apaga sozinho quando o envio acaba (sem tudo em memória)
+        var files = Hub.VisibleEntregas(batch, s.Account);
+        if (files.Count == 0) return Results.NotFound();
+        var tmp = Path.Combine(Path.GetTempPath(), $"salaviva-{Guid.NewGuid():N}.zip");
+        try
+        {
+            using (var z = System.IO.Compression.ZipFile.Open(tmp, System.IO.Compression.ZipArchiveMode.Create))
+                foreach (var r in files)
+                    System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(z, Path.Combine(Hub.CollectDir, r),
+                        r.Substring(r.IndexOf('/') + 1), System.IO.Compression.CompressionLevel.NoCompression);
+            var stream = new FileStream(tmp, FileMode.Open, FileAccess.Read, FileShare.Delete, 81920, FileOptions.DeleteOnClose);
+            return Results.File(stream, "application/zip", $"entregas-{Hub.SafeName(batch)}.zip");
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch { }
+            throw;
+        }
     }
     var root = Path.GetFullPath(Hub.CollectDir) + Path.DirectorySeparatorChar;
     var full = Path.GetFullPath(Path.Combine(Hub.CollectDir, file ?? ""));

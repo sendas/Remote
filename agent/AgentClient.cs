@@ -176,6 +176,15 @@ internal sealed class AgentClient
                     FullFps = (n["on"]?.GetValue<bool>() ?? false) ? CompatMath.Clamp(n["fps"]?.GetValue<int>() ?? 5, 1, 15) : 0;
                     Command?.Invoke(n);
                     break;
+                // ficheiros: início, pedaços e fim são tratados aqui, pela ordem em que chegam
+                // (se o início fosse para a thread da interface, os primeiros pedaços perdiam-se)
+                case "fileStart":
+                    Classroom.FileStart(n["id"]?.GetValue<string>() ?? "", n["name"]?.GetValue<string>() ?? "ficheiro");
+                    break;
+                case "fileEnd":
+                    var done = Classroom.FileEnd(n["id"]?.GetValue<string>() ?? "");
+                    if (done != null) Command?.Invoke(new System.Text.Json.Nodes.JsonObject { ["type"] = "fileReceived", ["path"] = done });
+                    break;
                 default:
                     Command?.Invoke(n);
                     break;
