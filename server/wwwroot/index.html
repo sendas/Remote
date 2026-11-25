@@ -61,6 +61,9 @@
     <button data-cmd="message" data-needs-sel class="c-blue">💬 Mensagem</button>
     <button data-cmd="openUrl" data-needs-sel>🌐 Abrir link</button>
     <button data-cmd="type" data-needs-sel>⌨ Escrever texto</button>
+    <button data-cmd="notice" data-needs-sel>📣 Aviso no ecrã</button>
+    <button data-cmd="minimize" data-needs-sel>🗕 Minimizar tudo</button>
+    <button data-cmd="mute" data-needs-sel>🔇 Silenciar</button>
     <span class="sep"></span>
     <button id="shareBtn" data-needs-sel class="primary">📺 Partilhar o meu ecrã</button>
     <button id="shareStopBtn" hidden class="danger">⏹ Parar partilha</button>
@@ -78,8 +81,18 @@
       <p class="muted">Os PCs aparecem aqui assim que arrancam. Escolhe outra sala no menu acima.</p>
     </div>
     <aside class="side">
-      <h2>💬 Mensagens</h2>
-      <ol id="chat" class="chat"></ol>
+      <div class="side-head">
+        <button id="chatBack" class="ghost" hidden>‹</button>
+        <h2 id="sideTitle">💬 Mensagens e mãos no ar</h2>
+      </div>
+      <ol id="threads" class="threads"></ol>
+      <div id="thread" class="thread" hidden>
+        <ol id="chat" class="chat"></ol>
+        <form id="chatForm" class="chat-box">
+          <input name="text" placeholder="Escrever ao aluno…" autocomplete="off" maxlength="2000">
+          <button class="primary">▸</button>
+        </form>
+      </div>
     </aside>
   </main>
 </section>
@@ -92,6 +105,10 @@
   <button data-ctx="unlock">🔓 Desbloquear</button>
   <button data-ctx="procs">📋 Programas abertos</button>
   <button data-ctx="type">⌨ Escrever texto</button>
+  <button data-ctx="chat">💬 Conversar</button>
+  <button data-ctx="notice">📣 Aviso no ecrã</button>
+  <button data-ctx="minimize">🗕 Minimizar tudo</button>
+  <button data-ctx="mute">🔇 Silenciar</button>
   <button data-ctx="openUrl">🌐 Abrir link</button>
   <hr>
   <button data-ctx="logoff">Terminar sessão</button>
@@ -122,6 +139,8 @@
       <button type="button" class="chip">Intervalo ☕</button>
       <button type="button" class="chip">Fim da aula 👋</button>
     </div>
+    <label>Cor do ecrã <span class="swatches" data-swatches></span></label>
+    <input type="hidden" name="color" value="#121826">
     <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Bloquear</button></div>
   </form>
 </dialog>
@@ -132,6 +151,26 @@
     <p class="muted" data-targets></p>
     <label>Endereço <input name="url" type="url" placeholder="https://" required></label>
     <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Abrir</button></div>
+  </form>
+</dialog>
+
+<dialog id="noticeDialog">
+  <form method="dialog" class="dlg">
+    <h2>📣 Aviso no ecrã</h2>
+    <p class="muted" data-targets></p>
+    <label>Texto <input name="text" maxlength="300" required value="Faltam poucos minutos!"></label>
+    <label>Cor <span class="swatches" data-swatches></span></label>
+    <input type="hidden" name="color" value="#4f6bff">
+    <label>Contagem decrescente
+      <select name="seconds">
+        <option value="0">Sem contagem</option>
+        <option value="60">1 minuto</option>
+        <option value="300">5 minutos</option>
+        <option value="600">10 minutos</option>
+        <option value="900">15 minutos</option>
+      </select>
+    </label>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Mostrar</button></div>
   </form>
 </dialog>
 

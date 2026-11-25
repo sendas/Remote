@@ -218,3 +218,29 @@ dialog::backdrop { background: rgba(10, 12, 24, .5); backdrop-filter: blur(2px);
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 50;
   background: #1d2033; color: #fff; padding: 9px 16px; border-radius: 12px; box-shadow: var(--shadow);
 }
+
+/* swatches (escolha de cor) */
+.swatches { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.swatches button { width: 26px; height: 26px; border-radius: 50%; padding: 0; border: 2px solid transparent; }
+.swatches button.sel { border-color: var(--text); box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+
+/* lado: conversas + mãos no ar */
+.side-head { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--line); }
+.side-head h2 { border: 0; }
+.side-head button { padding: 2px 10px; font-size: 18px; }
+.threads { list-style: none; margin: 0; padding: 8px; overflow: auto; flex: 1; display: grid; gap: 6px; align-content: start; }
+.threads li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--panel-2); cursor: pointer; }
+.threads li:hover { outline: 1px solid var(--accent); }
+.threads li.hand { background: color-mix(in srgb, var(--amber) 22%, var(--panel)); }
+.threads .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-weight: 700; flex: none; }
+.threads .who { flex: 1; min-width: 0; }
+.threads .who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threads .who span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.threads .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; }
+.thread { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.chat-box { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+.chat-box input { flex: 1; }
+.chat-box button { width: 44px; }
+.chat li.hand { background: color-mix(in srgb, var(--amber) 22%, var(--panel)); }
+.pc .hand-badge { position: absolute; left: 6px; bottom: 44px; font-size: 20px; animation: wave 1s ease-in-out infinite; }
+@keyframes wave { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }

@@ -68,7 +68,7 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Frame-Options"] = "DENY";
     ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
     ctx.Response.Headers["Content-Security-Policy"] =
-        "default-src 'self'; img-src 'self' blob: data:; connect-src 'self' wss: ws:; style-src 'self'; script-src 'self'";
+        "default-src 'self'; img-src 'self' blob: data:; connect-src 'self' wss: ws:; style-src 'self' 'unsafe-inline'; script-src 'self'";
     await next();
 });
 

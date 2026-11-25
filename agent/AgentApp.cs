@@ -19,6 +19,8 @@ internal sealed class AgentApp : ApplicationContext
     private string? _lockText;
     private List<BroadcastForm>? _broadcast;
     private ViewIndicator? _indicator;
+    private ChatForm? _chat;
+    private readonly List<NoticeForm> _notices = new();
     private DateTime? _disconnectedSince;
     private string _user = "";
     private int _tick;
@@ -33,12 +35,16 @@ internal sealed class AgentApp : ApplicationContext
         _ui.CreateControl();
         _ = _ui.Handle;
 
+        var trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add("Mensagens ao professor", null, (_, _) => Chat().Pop());
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Shield,
-            Text = "Sala de Aula — este computador pode ser observado pelo professor",
-            Visible = true,
+            Icon = AppIcon.Get(),
+            Text = "SalaViva — podes falar com o professor",
+            Visible = cfg.ShowTrayIcon,
+            ContextMenuStrip = trayMenu,
         };
+        _tray.DoubleClick += (_, _) => Chat().Pop();
 
         _user = CurrentUser();
         _client = new AgentClient(cfg, () => _user);
@@ -47,7 +53,7 @@ internal sealed class AgentApp : ApplicationContext
         _client.ConnectionChanged += up => _ui.BeginInvoke((Action)(() =>
         {
             _disconnectedSince = up ? null : DateTime.UtcNow;
-            _tray.Text = up ? "Sala de Aula — ligado ao professor" : "Sala de Aula — sem ligação ao servidor";
+            _tray.Text = up ? "SalaViva — ligado ao professor" : "SalaViva — sem ligação ao servidor";
             if (!up) SetIndicator(false);
         }));
         _client.Start();
@@ -103,9 +109,14 @@ internal sealed class AgentApp : ApplicationContext
         {
             switch (n["type"]?.GetValue<string>())
             {
-                case "lock": Lock(n["text"]?.GetValue<string>()); break;
+                case "lock": Lock(n["text"]?.GetValue<string>(), ParseColor(n["color"]?.GetValue<string>())); break;
                 case "unlock": Unlock(); break;
                 case "message": ShowMessage(n); break;
+                case "chat": ReceiveChat(n); break;
+                case "notice": ShowNotice(n); break;
+                case "noticeOff": ClearNotices(); break;
+                case "minimize": MinimizeAll(); break;
+                case "mute": SetMute(n["on"]?.GetValue<bool>() ?? true); break;
                 case "openUrl": OpenUrl(n["url"]?.GetValue<string>() ?? ""); break;
                 case "broadcastStart": StartBroadcast(n["from"]?.GetValue<string>() ?? "professor"); break;
                 case "broadcastStop": StopBroadcast(); break;
@@ -126,15 +137,17 @@ internal sealed class AgentApp : ApplicationContext
     }
 
     // ------------------------------------------------------------ bloqueio
-    private void Lock(string? text)
+    private Color? _lockColor;
+    private void Lock(string? text, Color? color)
     {
         _lockText = text;
+        _lockColor = color;
         if (_lock != null)
         {
             foreach (var f in _lock) f.SetText(text);
             return;
         }
-        _lock = Screen.AllScreens.Select(s => new LockForm(s, text)).ToList();
+        _lock = Screen.AllScreens.Select(s => new LockForm(s, text, color)).ToList();
         foreach (var f in _lock) f.Show();
         _keys.Enable();
         if (Program.RunningAsSystem) Native.BlockInput(true);
@@ -254,6 +267,62 @@ internal sealed class AgentApp : ApplicationContext
         SendProcesses();
     }
 
+    // ------------------------------------------------------------ chat, avisos, extras
+    private ChatForm Chat()
+    {
+        if (_chat == null || _chat.IsDisposed)
+            _chat = new ChatForm("Professor", text => _client.Post(new { type = "chat", text }), () => _client.Post(new { type = "hand" }));
+        return _chat;
+    }
+
+    private void ReceiveChat(JsonNode n)
+    {
+        var text = n["text"]?.GetValue<string>() ?? "";
+        if (text.Length == 0) return;
+        var c = Chat();
+        c.Add(text, false);
+        c.Pop();
+    }
+
+    private void ShowNotice(JsonNode n)
+    {
+        var id = n["id"]?.GetValue<string>() ?? Guid.NewGuid().ToString("N").Substring(0, 6);
+        var text = n["text"]?.GetValue<string>() ?? "";
+        var color = ParseColor(n["color"]?.GetValue<string>()) ?? Color.FromArgb(79, 107, 255);
+        var secs = n["seconds"]?.GetValue<int>() ?? 0;
+        _notices.RemoveAll(f => { if (f.Id == id) { f.Close(); return true; } return false; });
+        var form = new NoticeForm(id, text, color, secs);
+        form.FormClosed += (_, _) => _notices.Remove(form);
+        _notices.Add(form);
+        form.Show();
+    }
+
+    private void ClearNotices()
+    {
+        foreach (var f in _notices.ToList()) f.Close();
+        _notices.Clear();
+    }
+
+    private void MinimizeAll()
+    {
+        try { InputInjector.MinimizeAll(); } catch (Exception ex) { Log.Write("Minimizar: " + ex.Message); }
+    }
+
+    private void SetMute(bool on)
+    {
+        try { AudioControl.SetMute(on); Log.Write(on ? "Som silenciado" : "Som reposto"); }
+        catch (Exception ex) { Log.Write("Som: " + ex.Message); }
+    }
+
+    private static Color? ParseColor(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return null;
+        hex = hex.TrimStart('#');
+        if (hex.Length == 6 && int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var v))
+            return Color.FromArgb(255, (v >> 16) & 255, (v >> 8) & 255, v & 255);
+        return null;
+    }
+
     // ------------------------------------------------------------ ações de sistema
     private void OpenUrl(string url)
     {
@@ -289,6 +358,8 @@ internal sealed class AgentApp : ApplicationContext
         {
             Unlock();
             StopBroadcast();
+            ClearNotices();
+            _chat?.Dispose();
             _tray.Dispose();
             _keys.Dispose();
             _timer.Dispose();

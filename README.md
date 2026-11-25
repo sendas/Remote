@@ -165,12 +165,23 @@ numa sala ativa não instalam nada.
 
 Logs no PC: `C:\ProgramData\ClassroomAgent\instalar.log` e `agent.log`.
 
+## No PC do aluno
+
+- **Ícone SalaViva** na barra de tarefas. Duplo clique abre o chat com o professor. Opção `ShowTrayIcon: false`
+  esconde-o (ver aviso de RGPD abaixo).
+- **Chat**: o aluno pode escrever ao professor e **✋ levantar a mão**; o professor vê as mãos no ar na coluna lateral.
+- **Avisos no ecrã**: faixa no topo com cor à escolha e contagem decrescente opcional ("Faltam 5 minutos").
+- **Bloqueio** com cor à escolha e o logótipo ao centro.
+- **Minimizar tudo** e **silenciar o som** à distância.
+
 ## Segurança e RGPD
 
 - Ver o ecrã de alunos é tratamento de dados pessoais (muitas vezes de menores). Antes de usar:
   informa o **Encarregado de Proteção de Dados** do agrupamento, inclui a monitorização no regulamento
   interno / informação aos encarregados de educação e define quem tem acesso.
 - Não há gravação de ecrãs: as imagens só passam pelo servidor em memória.
+- **Ícone invisível (`ShowTrayIcon: false`):** esconder o agente contraria o princípio de transparência do RGPD.
+  Só o deves usar com parecer do Encarregado de Proteção de Dados e informação prévia aos alunos no regulamento interno.
 - O log de auditoria regista logins, bloqueios, mensagens, links, partilhas e quem abriu que ecrã.
 - Professores podem ficar limitados a certas salas (`add-teacher ... 'SALA12,INFO2'`).
 - Proteção contra força bruta no login; tokens de sessão expiram (12 h por omissão).

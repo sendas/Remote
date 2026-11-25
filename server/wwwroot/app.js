@@ -22,6 +22,8 @@
     viewerUrl: null,
     share: null,
     procsFor: null,
+    threads: new Map(),   // id -> {msgs:[{text,mine,hand,at}], unread, hand}
+    openThread: null,
     reconnectDelay: 1000,
   };
 
@@ -93,6 +95,7 @@
     for (const el of $$("[data-admin]")) el.hidden = !state.me.isAdmin;
     $("#zoom").value = store.get("zoom", "240");
     applyZoom();
+    buildSwatches();
     await loadCatalog();
     connect();
   }
@@ -151,8 +154,10 @@
       case "agentJoined":
       case "agentUpdate": upsertAgent(m.agent); refresh(); break;
       case "agentLeft": removeAgent(m.id); refresh(); break;
-      case "reply": addChat(`${m.user || m.id} (${m.id})`, m.text, false); toast(`💬 Resposta de ${m.user || m.id}`); break;
+      case "reply": onIncoming(m.id, m.user, m.text, false); break;
       case "procs": if (m.id === state.procsFor) renderProcs(m.list || []); break;
+      case "chat": onIncoming(m.id, m.user, m.text, false); break;
+      case "hand": onHand(m.id, m.user); break;
       case "catalogChanged": loadCatalog(); break;
     }
   }
@@ -230,6 +235,20 @@
   $("#zoom").addEventListener("input", () => { store.set("zoom", $("#zoom").value); applyZoom(); });
   function applyZoom() { $("#grid").style.setProperty("--tile", $("#zoom").value + "px"); }
 
+  const PALETTE = ["#4f6bff", "#12a372", "#e5394f", "#ffad1f", "#6a3dff", "#00b8a3", "#ff5a6a", "#121826"];
+  function buildSwatches() {
+    for (const host of $$("[data-swatches]")) {
+      const hidden = host.closest("label").parentElement.querySelector("[name=color]");
+      host.innerHTML = PALETTE.map((c) => `<button type="button" style="background:${c}" data-c="${c}" class="${c === hidden.value ? "sel" : ""}"></button>`).join("");
+      host.onclick = (e) => {
+        const bt = e.target.closest("[data-c]");
+        if (!bt) return;
+        hidden.value = bt.dataset.c;
+        for (const x of host.children) x.classList.toggle("sel", x === bt);
+      };
+    }
+  }
+
   function matches(info) {
     const f = state.filter;
     if (f) {
@@ -286,6 +305,7 @@
     state.selected.delete(id);
     state.share?.targets.delete(id);
     if (state.viewing === id) closeViewer();
+    if (state.openThread === id) closeThread();
   }
 
   const visibleIds = () => [...state.agents.values()].filter((a) => matches(a.info)).map((a) => a.info.id);
@@ -311,6 +331,7 @@
     $("#shareBtn").hidden = !!state.share;
     $("#shareStopBtn").hidden = !state.share;
     if (state.share) $("#shareStopBtn").textContent = `⏹ Parar partilha (${state.share.targets.size} PCs)`;
+    renderThreads();
   }
 
   function toggleSelect(id, additive) {
@@ -337,13 +358,19 @@
       case "openUrl": return openDialog("#urlDialog", ids, (f) => {
         const url = String(f.get("url")).trim();
         cmd("openUrl", ids, { url });
-        addChat(`🌐 Link → ${names(ids)}`, url, true);
+        toast(`🌐 Link aberto em ${ids.size} PC(s)`);
       });
       case "type": return openDialog("#typeDialog", ids, (f) => {
         cmd("type", ids, { text: String(f.get("text")) });
         toast(`⌨ Texto enviado para ${ids.size} PC(s)`);
       });
       case "procs": return openProcs([...ids][0]);
+      case "chat": return openThread([...ids][0]);
+      case "notice": return openDialog("#noticeDialog", ids, (f) => {
+        cmd("notice", ids, { text: f.get("text"), color: f.get("color"), seconds: +f.get("seconds") });
+        toast(`\u{1F4E3} Aviso em ${ids.size} PC(s)`);
+      });
+      case "minimize": cmd("minimize", ids); return toast("Minimizado");
       case "logoff":
       case "reboot":
       case "shutdown": {
@@ -352,7 +379,11 @@
       }
     }
   }
-  for (const b of $$("[data-cmd]")) b.addEventListener("click", () => runAction(b.dataset.cmd, state.selected));
+  let muted = false;
+  for (const b of $$("[data-cmd]")) b.addEventListener("click", () => {
+    if (b.dataset.cmd === "mute") { muted = !muted; cmd("mute", state.selected, { on: muted }); b.textContent = muted ? "\u{1F50A} Repor som" : "\u{1F507} Silenciar"; return; }
+    runAction(b.dataset.cmd, state.selected);
+  });
 
   // menu de contexto (botão direito num PC)
   let ctxIds = [];
@@ -386,13 +417,13 @@
       const text = String(f.get("text") || "").trim();
       if (!text) return;
       cmd("message", ids, { title: f.get("title"), text, allowReply: f.get("allowReply") === "on" });
-      addChat(`Eu → ${names(ids)}`, text, true);
+      logGroup(new Set(ids), text);
     });
   }
 
   function openLock(ids) {
     openDialog("#lockDialog", ids, (f) => {
-      cmd("lock", ids, { text: String(f.get("text") || "") });
+      cmd("lock", ids, { text: String(f.get("text") || ""), color: f.get("color") });
       toast(`🔒 Bloqueados: ${ids.size}`);
     });
   }
@@ -401,13 +432,101 @@
     if (b) $("#lockDialog [name=text]").value = b.textContent;
   });
 
-  function addChat(head, text, outgoing) {
-    const li = document.createElement("li");
-    if (outgoing) li.className = "out";
-    li.innerHTML = `<div class="h">${new Date().toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })} · ${esc(head)}</div><div class="t">${esc(text)}</div>`;
-    $("#chat").append(li);
+  // ---------------------------------------------------------- conversas por aluno + mãos no ar
+  function thread(id) {
+    let t = state.threads.get(id);
+    if (!t) { t = { msgs: [], unread: 0, hand: false }; state.threads.set(id, t); }
+    return t;
+  }
+  function onIncoming(id, user, text, hand) {
+    const t = thread(id);
+    t.msgs.push({ text, mine: false, hand, at: Date.now() });
+    if (state.openThread === id) renderThread(id);
+    else t.unread++;
+    renderThreads();
+    toast(`💬 ${user || id}: ${text.slice(0, 40)}`);
+  }
+  function onHand(id, user) {
+    const t = thread(id);
+    t.hand = true;
+    t.msgs.push({ text: "✋ Levantou a mão", mine: false, hand: true, at: Date.now() });
+    if (state.openThread === id) renderThread(id); else t.unread++;
+    renderThreads();
+    toast(`✋ ${user || id} levantou a mão`);
+    const a = state.agents.get(id);
+    if (a && !a.el.querySelector(".hand-badge")) {
+      const b = document.createElement("div");
+      b.className = "hand-badge";
+      b.textContent = "✋";
+      a.el.append(b);
+    }
+  }
+  function clearHand(id) {
+    thread(id).hand = false;
+    state.agents.get(id)?.el.querySelector(".hand-badge")?.remove();
+    renderThreads();
+  }
+  function sendChat(id, text) {
+    cmd("chat", [id], { text });
+    thread(id).msgs.push({ text, mine: true, at: Date.now() });
+    renderThread(id);
+  }
+  function renderThreads() {
+    const box = $("#threads");
+    const entries = [...state.threads.entries()].filter(([id]) => state.agents.has(id) || thread(id).msgs.length);
+    entries.sort((a, b) => (b[1].hand - a[1].hand) || ((b[1].msgs.at(-1)?.at || 0) - (a[1].msgs.at(-1)?.at || 0)));
+    box.innerHTML = entries.map(([id, t]) => {
+      const a = state.agents.get(id);
+      const name = a?.info.hostname || id;
+      const last = t.msgs.at(-1);
+      return `<li data-thread="${esc(id)}" class="${t.hand ? "hand" : ""}">
+        <span class="av">${esc((a?.info.user || name).slice(0, 1).toUpperCase())}</span>
+        <span class="who"><b>${t.hand ? "✋ " : ""}${esc(name)}</b><span>${esc(last ? (last.mine ? "Eu: " : "") + last.text : "")}</span></span>
+        ${t.unread ? `<span class="dot"></span>` : ""}</li>`;
+    }).join("") || `<li class="muted" style="background:none;cursor:default">Sem conversas. Clica num PC com o botão direito → Conversar, ou espera que um aluno escreva.</li>`;
+  }
+  function openThread(id) {
+    state.openThread = id;
+    thread(id).unread = 0;
+    clearHand(id);
+    $("#threads").hidden = true;
+    $("#thread").hidden = false;
+    $("#chatBack").hidden = false;
+    const a = state.agents.get(id);
+    $("#sideTitle").textContent = `💬 ${a?.info.hostname || id}`;
+    renderThread(id);
+    $("#chatForm text") && ($("#chatForm [name=text]").value = "");
+    $("#chatForm [name=text]").focus();
+  }
+  function renderThread(id) {
+    const t = thread(id);
+    $("#chat").innerHTML = t.msgs.map((m) => `<li class="${m.mine ? "out" : ""} ${m.hand ? "hand" : ""}">
+      <div class="h">${new Date(m.at).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })} · ${m.mine ? "Eu" : esc(state.agents.get(id)?.info.user || id)}</div>
+      <div class="t">${esc(m.text)}</div></li>`).join("");
     $("#chat").scrollTop = $("#chat").scrollHeight;
   }
+  function closeThread() {
+    state.openThread = null;
+    $("#thread").hidden = true;
+    $("#threads").hidden = false;
+    $("#chatBack").hidden = true;
+    $("#sideTitle").textContent = "💬 Mensagens e mãos no ar";
+    renderThreads();
+  }
+  $("#chatBack").addEventListener("click", closeThread);
+  $("#threads").addEventListener("click", (e) => {
+    const id = e.target.closest("[data-thread]")?.dataset.thread;
+    if (id) openThread(id);
+  });
+  $("#chatForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const inp = e.target.elements.text;
+    const text = inp.value.trim();
+    if (text && state.openThread) { sendChat(state.openThread, text); inp.value = ""; }
+  });
+  // mensagens enviadas em grupo (diálogo "Mensagem") -> entram na conversa de cada um
+  function logGroup(ids, text) { for (const id of ids) { thread(id).msgs.push({ text, mine: true, at: Date.now() }); } renderThreads(); if (state.openThread && ids.has?.(state.openThread)) renderThread(state.openThread); }
+  function addChat() {}
 
   // ---------------------------------------------------------- programas abertos
   function openProcs(id) {
@@ -469,7 +588,7 @@
     stream.getVideoTracks()[0].addEventListener("ended", stopShare);
     state.share = { stream, timer, targets };
     cmd("broadcastStart", targets, { fullscreen: true });
-    addChat(`📺 Partilha → ${names(targets)}`, "Iniciada", true);
+    toast("📺 A partilhar o teu ecrã");
     refresh();
   }
 
@@ -480,7 +599,6 @@
     clearInterval(s.timer);
     s.stream.getTracks().forEach((t) => t.stop());
     if (s.targets.size) cmd("broadcastStop", s.targets);
-    addChat("📺 Partilha", "Terminada", true);
     refresh();
   }
 

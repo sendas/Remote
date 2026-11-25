@@ -30,6 +30,7 @@ public sealed class Hub
     {
         "lock", "unlock", "message", "openUrl", "logoff", "reboot", "shutdown",
         "broadcastStart", "broadcastStop", "watch", "unwatch", "input", "procs", "kill", "type",
+        "chat", "notice", "noticeOff", "minimize", "mute",
     };
 
     private readonly ServerConfig _cfg;
@@ -319,6 +320,16 @@ public sealed class Hub
                 break;
             case "pong":
                 break;
+            case "chat":
+                var ctext = Clean(n["text"]?.GetValue<string>(), 2000, allowNewlines: true);
+                if (ctext.Length == 0) return;
+                _audit.Write(a.Id, "chat-aluno", ctext);
+                BroadcastToTeachers(a, new { type = "chat", id = a.Id, user = a.User, text = ctext, at = DateTimeOffset.UtcNow });
+                break;
+            case "hand":
+                _audit.Write(a.Id, "mao-no-ar", "");
+                BroadcastToTeachers(a, new { type = "hand", id = a.Id, user = a.User, at = DateTimeOffset.UtcNow });
+                break;
             case "procs":
                 // lista de programas abertos pedida por uma consola
                 BroadcastToTeachers(a, new { type = "procs", id = a.Id, list = n["list"]?.DeepClone() });
@@ -415,7 +426,7 @@ public sealed class Hub
                 foreach (var a in targets)
                 {
                     a.Locked = lockIt;
-                    a.SendJson(new { type = action, text = Clean(n["text"]?.GetValue<string>(), 300) });
+                    a.SendJson(new { type = action, text = Clean(n["text"]?.GetValue<string>(), 300), color = Clean(n["color"]?.GetValue<string>(), 7) });
                     BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
                 }
                 break;
@@ -484,6 +495,37 @@ public sealed class Hub
             case "type":
                 var txt = Clean(n["text"]?.GetValue<string>(), 2000, allowNewlines: true);
                 if (txt.Length > 0) foreach (var a in targets) a.SendJson(new { type = "type", text = txt });
+                break;
+
+            case "chat":
+                var chatText = Clean(n["text"]?.GetValue<string>(), 2000, allowNewlines: true);
+                if (chatText.Length == 0) return;
+                foreach (var a in targets) a.SendJson(new { type = "chat", from = t.Username, text = chatText });
+                break;
+
+            case "notice":
+                var notice = new
+                {
+                    type = "notice",
+                    id = Guid.NewGuid().ToString("N").Substring(0, 6),
+                    text = Clean(n["text"]?.GetValue<string>(), 300),
+                    color = Clean(n["color"]?.GetValue<string>(), 7),
+                    seconds = Math.Clamp(n["seconds"]?.GetValue<int>() ?? 0, 0, 7200),
+                };
+                foreach (var a in targets) a.SendJson(notice);
+                break;
+
+            case "noticeOff":
+                foreach (var a in targets) a.SendJson(new { type = "noticeOff" });
+                break;
+
+            case "minimize":
+                foreach (var a in targets) a.SendJson(new { type = "minimize" });
+                break;
+
+            case "mute":
+                var on = n["on"]?.GetValue<bool>() ?? true;
+                foreach (var a in targets) a.SendJson(new { type = "mute", on });
                 break;
 
             case "input":

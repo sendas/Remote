@@ -73,6 +73,15 @@ internal static class InputInjector
         }
     }
 
+    /// <summary>Minimiza tudo no PC do aluno (Win+M).</summary>
+    public static void MinimizeAll()
+    {
+        SendKey(0x5B, false); // Win
+        SendKey(0x4D, false); // M
+        SendKey(0x4D, true);
+        SendKey(0x5B, true);
+    }
+
     private static void SendKey(ushort vk, bool up) =>
         Send(new INPUT { type = INPUT_KEYBOARD, U = { ki = { wVk = vk, wScan = (ushort)MapVirtualKey(vk, 0), dwFlags = up ? KEYUP : 0 } } });
 

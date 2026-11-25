@@ -17,6 +17,7 @@ ws.onopen = () => {
   ws.send(JSON.stringify({ type: "hello", key, id: name, hostname: name, room, school, user: "ESCOLA\\aluno." + name.toLowerCase(), os: "Simulado", version: "0.0.0" }));
   setInterval(() => ws.send(frame(0x01)), 2000);
   ws.send(frame(0x01));
+  if (process.env.HAND) { setTimeout(() => ws.send(JSON.stringify({ type: "hand" })), 1500); setTimeout(() => ws.send(JSON.stringify({ type: "chat", text: "Stôr, não percebi o exercício 3" })), 2500); }
 };
 ws.onmessage = (ev) => {
   if (typeof ev.data !== "string") { console.log(`[${name}] frame de partilha recebido (${ev.data.byteLength} bytes)`); return; }
@@ -24,6 +25,11 @@ ws.onmessage = (ev) => {
   if (m.type !== "input" || m.ev !== "move") console.log(`[${name}]`, JSON.stringify(m));
   if (m.type === "message" && m.allowReply) setTimeout(() => ws.send(JSON.stringify({ type: "reply", msgId: m.id, text: "Recebido, professor!" })), 500);
   if (m.type === "procs") ws.send(JSON.stringify({ type: "procs", list: [{ pid: 101, name: "chrome", title: "YouTube - Google Chrome" }, { pid: 202, name: "WINWORD", title: "Trabalho.docx - Word" }] }));
+  if (m.type === "chat") setTimeout(() => ws.send(JSON.stringify({ type: "chat", text: "Obrigado, professor!" })), 400);
+  if (m.type === "notice") console.log(`[${name}] aviso: ${m.text} (${m.color}, ${m.seconds}s)`);
+  if (m.type === "minimize") console.log(`[${name}] minimizar tudo`);
+  if (m.type === "mute") console.log(`[${name}] som ${m.on ? "off" : "on"}`);
+  if (m.type === "lock") console.log(`[${name}] bloqueado cor=${m.color}`);
   if (m.type === "stream") {
     clearInterval(streamTimer);
     if (m.on) streamTimer = setInterval(() => ws.send(frame(0x02)), 1000 / m.fps);

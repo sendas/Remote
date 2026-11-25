@@ -18,6 +18,7 @@ public sealed class InstallConfig
     /// <summary>Salas ativas. Vazio ou "*" = todas. Permite instalar por fases.</summary>
     public List<string> Salas { get; set; } = new();
     public bool ShowViewIndicator { get; set; } = true;
+    public bool ShowTrayIcon { get; set; } = true;
     /// <summary>Nome a mostrar na consola para cada pasta do AD, ex.: { "Sala 13": "Sala TIC 2" }.</summary>
     public Dictionary<string, string> NomesSalas { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -71,6 +72,7 @@ internal static class Installer
                 Room = sala,
                 School = escola,
                 ShowViewIndicator = cfg.ShowViewIndicator,
+                ShowTrayIcon = cfg.ShowTrayIcon,
             }, new JsonSerializerOptions { WriteIndented = true });
 
             var exeDst = Path.Combine(Target, "ClassroomAgent.exe");
@@ -156,6 +158,8 @@ internal static class Installer
         };
         var ind = n.FirstOrDefault(p => p.Key.Equals("ShowViewIndicator", StringComparison.OrdinalIgnoreCase)).Value;
         if (ind is System.Text.Json.Nodes.JsonValue b && b.TryGetValue<bool>(out var bv)) cfg.ShowViewIndicator = bv;
+        var tr = n.FirstOrDefault(p => p.Key.Equals("ShowTrayIcon", StringComparison.OrdinalIgnoreCase)).Value;
+        if (tr is System.Text.Json.Nodes.JsonValue tb && tb.TryGetValue<bool>(out var tbv)) cfg.ShowTrayIcon = tbv;
         if (n.FirstOrDefault(p => p.Key.Equals("NomesSalas", StringComparison.OrdinalIgnoreCase)).Value is System.Text.Json.Nodes.JsonObject nomes)
             foreach (var kv in nomes) cfg.NomesSalas[kv.Key] = kv.Value?.ToString() ?? "";
         return cfg;

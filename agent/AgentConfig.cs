@@ -16,6 +16,9 @@ public sealed class AgentConfig
     /// <summary>Mostra um aviso no ecrã do aluno quando o professor abre o seu ecrã em grande (transparência/RGPD).</summary>
     public bool ShowViewIndicator { get; set; } = true;
 
+    /// <summary>Mostra o ícone do SalaViva na barra de tarefas do aluno (transparência/RGPD).</summary>
+    public bool ShowTrayIcon { get; set; } = true;
+
     public static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ClassroomAgent");
 
