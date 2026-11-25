@@ -198,9 +198,20 @@ public sealed class Updater : BackgroundService
         File.WriteAllText(cmd, string.Join("\r\n", new[]
         {
             "@echo off",
-            "net stop ClassroomServer",
+            // net stop pode ficar pendurado: em segundo plano, com limite, e depois mata o processo
+            "start \"\" /b net stop ClassroomServer",
+            "ping -n 21 127.0.0.1 > nul",
+            "taskkill /f /im ClassroomServer.exe > nul 2>&1",
             "ping -n 4 127.0.0.1 > nul",
-            $"copy /y \"{Path.Combine(newDir, "ClassroomServer.exe")}\" \"{Path.Combine(targetDir, "ClassroomServer.exe")}\"",
+            "set n=0",
+            ":copiar",
+            $"copy /y \"{Path.Combine(newDir, "ClassroomServer.exe")}\" \"{Path.Combine(targetDir, "ClassroomServer.exe")}\" && goto copiado",
+            "set /a n+=1",
+            "if %n% geq 10 goto copiado",
+            "taskkill /f /im ClassroomServer.exe > nul 2>&1",
+            "ping -n 4 127.0.0.1 > nul",
+            "goto copiar",
+            ":copiado",
             $"xcopy /e /y /i \"{Path.Combine(newDir, "wwwroot")}\" \"{Path.Combine(targetDir, "wwwroot")}\"",
             "net start ClassroomServer",
             "schtasks /delete /tn SalaVivaUpdate /f",
