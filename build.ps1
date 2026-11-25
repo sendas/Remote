@@ -1,4 +1,4 @@
-# Compila servidor e agente para Windows (x64). Requer o .NET 8 SDK.
+﻿# Compila servidor e agente para Windows (x64). Requer o .NET 8 SDK.
 #   .\build.ps1            -> cria .\publish\server e .\publish\agent
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot

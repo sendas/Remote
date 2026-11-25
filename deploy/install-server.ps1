@@ -1,4 +1,5 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
+# Nota: usa SIDs (S-1-5-18 = SYSTEM, S-1-5-32-544 = Administradores) para funcionar em Windows em qualquer idioma.
 <#
   Instala o ClassroomServer como serviço Windows no servidor da escola.
   Executar a partir da pasta publish\server:
@@ -23,7 +24,7 @@ Copy-Item "$PSScriptRoot\wwwroot" $InstallDir -Recurse -Force
 # Pasta de dados (configuração, certificado, auditoria): só SYSTEM e Administradores
 $data = Join-Path $InstallDir 'data'
 New-Item $data -ItemType Directory -Force | Out-Null
-icacls $data /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'BUILTIN\Administrators:(OI)(CI)F' | Out-Null
+icacls $data /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 
 # Primeira execução: gera configuração, palavra-passe do admin, chave dos agentes e certificado
 $exe = Join-Path $InstallDir 'ClassroomServer.exe'

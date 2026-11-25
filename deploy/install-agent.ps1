@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
   Instala o agente num PC de aluno (Windows 10/11). Pode ser usado como script de arranque de GPO
   (Configuração do Computador > Políticas > Definições do Windows > Scripts > Arranque).
@@ -38,7 +38,7 @@ if ($needCopy) { Copy-Item $src $exe -Force }
 
 # Configuração: a chave é secreta -> só SYSTEM e Administradores conseguem ler
 New-Item $dataDir -ItemType Directory -Force | Out-Null
-icacls $dataDir /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'BUILTIN\Administrators:(OI)(CI)F' | Out-Null
+icacls $dataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 $cfg = [ordered]@{
     ServerUrls        = @($ServerUrl -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     EnrollmentKey     = $EnrollmentKey

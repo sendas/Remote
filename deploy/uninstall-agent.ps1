@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 $ErrorActionPreference = 'SilentlyContinue'
 Stop-Service ClassroomAgent -Force
 Get-Process ClassroomAgent | Stop-Process -Force
