@@ -511,6 +511,8 @@ public sealed class Hub
                     text = Clean(n["text"]?.GetValue<string>(), 300),
                     color = Clean(n["color"]?.GetValue<string>(), 7),
                     seconds = Math.Clamp(n["seconds"]?.GetValue<int>() ?? 0, 0, 7200),
+                    closable = n["closable"]?.GetValue<bool>() ?? true,
+                    lockAtEnd = n["lockAtEnd"]?.GetValue<bool>() ?? false,
                 };
                 foreach (var a in targets) a.SendJson(notice);
                 break;

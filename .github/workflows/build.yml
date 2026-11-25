@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,11 +19,35 @@ jobs:
       - name: Compilar servidor e agente
         shell: pwsh
         run: ./build.ps1
+
       - uses: actions/upload-artifact@v4
         with:
-          name: SalaDeAula-Servidor
+          name: SalaViva-Servidor
           path: publish/server
       - uses: actions/upload-artifact@v4
         with:
-          name: SalaDeAula-Agente
+          name: SalaViva-Agente
           path: publish/agent
+
+      # ------- Release "auto": o servidor atualiza-se sozinho a partir daqui -------
+      - name: Preparar ficheiros da release
+        if: github.ref_name == 'claude/school-computer-control-app-yj3mbm'
+        shell: pwsh
+        run: |
+          New-Item release -ItemType Directory -Force | Out-Null
+          Copy-Item publish/server/ClassroomServer.exe release/SalaViva-Servidor.exe
+          Compress-Archive -Path publish/server/* -DestinationPath release/SalaViva-Servidor.zip -Force
+          Compress-Archive -Path publish/agent/*  -DestinationPath release/SalaViva-Agente.zip  -Force
+
+      - name: Publicar/atualizar a release "auto"
+        if: github.ref_name == 'claude/school-computer-control-app-yj3mbm'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # recria a tag/release "auto" sempre apontada ao último build
+          gh release delete auto --yes --cleanup-tag 2>$null
+          gh release create auto release/SalaViva-Servidor.exe release/SalaViva-Servidor.zip release/SalaViva-Agente.zip `
+            --title "SalaViva (última versão)" `
+            --notes "Build automático de ${{ github.sha }}. O servidor atualiza-se a partir daqui." `
+            --target ${{ github.sha }}

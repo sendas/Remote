@@ -165,11 +165,14 @@
       <select name="seconds">
         <option value="0">Sem contagem</option>
         <option value="60">1 minuto</option>
+        <option value="120">2 minutos</option>
         <option value="300">5 minutos</option>
         <option value="600">10 minutos</option>
         <option value="900">15 minutos</option>
       </select>
     </label>
+    <label class="check"><input type="checkbox" name="closable" checked> O aluno pode fechar o aviso</label>
+    <label class="check"><input type="checkbox" name="lockAtEnd"> 🔒 Bloquear o PC quando a contagem acabar</label>
     <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Mostrar</button></div>
   </form>
 </dialog>

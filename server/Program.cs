@@ -50,6 +50,8 @@ builder.Services.AddSingleton<Hub>();
 // parar o serviço em poucos segundos, mesmo com ligações abertas (consola, agentes)
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(5));
 if (cfg.AgentPipe) builder.Services.AddHostedService<PipeListener>();
+builder.Services.AddSingleton<Updater>();
+if (cfg.AutoUpdate) builder.Services.AddHostedService(sp => sp.GetRequiredService<Updater>());
 
 var app = builder.Build();
 var log = app.Logger;
@@ -282,6 +284,13 @@ internal static class Cli
                 Console.WriteLine(ServerConfig.LoadOrCreate(out _).EnrollmentKey);
                 return 0;
             }
+            case "update":
+            {
+                var cfg = ServerConfig.LoadOrCreate(out _);
+                var up = new Updater(cfg, LoggerFactory.Create(b => b.AddConsole()).CreateLogger<Updater>());
+                try { Console.WriteLine(up.CheckOnce().GetAwaiter().GetResult()); return 0; }
+                catch (Exception ex) { Console.Error.WriteLine("Falha: " + ex.Message); return 1; }
+            }
         }
 
         Console.WriteLine("""
@@ -293,6 +302,7 @@ internal static class Cli
               list-teachers
               show-pin                                mostra o CertificatePin para os agentes
               show-key                                mostra a EnrollmentKey para os agentes
+              update                                  verifica e instala já a versão mais recente do GitHub
             """);
         return 1;
     }

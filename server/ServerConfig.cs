@@ -62,6 +62,12 @@ public sealed class ServerConfig
     /// <summary>Se o agente perder a ligação ao servidor durante este tempo, desbloqueia sozinho (failsafe).</summary>
     public int AgentFailsafeUnlockMinutes { get; set; } = 10;
 
+    /// <summary>Atualização automática do servidor a partir das Releases do GitHub.</summary>
+    public bool AutoUpdate { get; set; } = true;
+    public int UpdateCheckMinutes { get; set; } = 60;
+    public string UpdateReleaseApi { get; set; } = "https://api.github.com/repos/sendas/Remote/releases/tags/auto";
+    public string UpdateAssetName { get; set; } = "SalaViva-Servidor.exe";
+
     public static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,

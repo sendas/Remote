@@ -71,6 +71,9 @@ internal sealed class AgentApp : ApplicationContext
     {
         _tick++;
 
+        // mantém avisos não-fecháveis por cima de tudo
+        foreach (var nf in _notices) nf.Reassert();
+
         // mantém o bloqueio e a partilha por cima de tudo (e reativa após Ctrl+Alt+Del)
         if (_lock != null)
         {
@@ -290,8 +293,12 @@ internal sealed class AgentApp : ApplicationContext
         var text = n["text"]?.GetValue<string>() ?? "";
         var color = ParseColor(n["color"]?.GetValue<string>()) ?? Color.FromArgb(79, 107, 255);
         var secs = n["seconds"]?.GetValue<int>() ?? 0;
+        var closable = n["closable"]?.GetValue<bool>() ?? true;
+        var lockAtEnd = n["lockAtEnd"]?.GetValue<bool>() ?? false;
         _notices.RemoveAll(f => { if (f.Id == id) { f.Close(); return true; } return false; });
-        var form = new NoticeForm(id, text, color, secs);
+        var form = new NoticeForm(id, text, color, secs, closable);
+        if (lockAtEnd && secs > 0)
+            form.Ended += _ => Lock(text, color);
         form.FormClosed += (_, _) => _notices.Remove(form);
         _notices.Add(form);
         form.Show();

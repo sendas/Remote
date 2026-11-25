@@ -367,7 +367,8 @@
       case "procs": return openProcs([...ids][0]);
       case "chat": return openThread([...ids][0]);
       case "notice": return openDialog("#noticeDialog", ids, (f) => {
-        cmd("notice", ids, { text: f.get("text"), color: f.get("color"), seconds: +f.get("seconds") });
+        cmd("notice", ids, { text: f.get("text"), color: f.get("color"), seconds: +f.get("seconds"),
+          closable: f.get("closable") === "on", lockAtEnd: f.get("lockAtEnd") === "on" });
         toast(`\u{1F4E3} Aviso em ${ids.size} PC(s)`);
       });
       case "minimize": cmd("minimize", ids); return toast("Minimizado");

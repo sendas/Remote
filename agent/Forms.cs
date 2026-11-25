@@ -92,10 +92,15 @@ internal sealed class NoticeForm : Form
 
     public string Id { get; }
 
-    public NoticeForm(string id, string text, Color color, int seconds)
+    /// <summary>Disparado quando a contagem chega a zero (antes de a faixa fechar).</summary>
+    public event Action<NoticeForm>? Ended;
+    private readonly bool _closable;
+
+    public NoticeForm(string id, string text, Color color, int seconds, bool closable = true)
     {
         Id = id;
         _text = text;
+        _closable = closable;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
@@ -104,10 +109,15 @@ internal sealed class NoticeForm : Form
         var fg = LockForm.Contrast(color);
         var pic = new PictureBox { Image = AppIcon.Bitmap(28), SizeMode = PictureBoxSizeMode.AutoSize, Dock = DockStyle.Left, BackColor = Color.Transparent, Padding = new Padding(10, 6, 6, 6) };
         _label = new Label { Dock = DockStyle.Fill, ForeColor = fg, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.Transparent };
-        var close = new Button { Text = "✕", Dock = DockStyle.Right, Width = 40, FlatStyle = FlatStyle.Flat, ForeColor = fg, BackColor = Color.Transparent };
-        close.FlatAppearance.BorderSize = 0;
-        close.Click += (_, _) => Close();
-        Controls.Add(_label); Controls.Add(close); Controls.Add(pic);
+        Controls.Add(_label);
+        if (closable)
+        {
+            var close = new Button { Text = "✕", Dock = DockStyle.Right, Width = 40, FlatStyle = FlatStyle.Flat, ForeColor = fg, BackColor = Color.Transparent };
+            close.FlatAppearance.BorderSize = 0;
+            close.Click += (_, _) => Close();
+            Controls.Add(close);
+        }
+        Controls.Add(pic);
         if (seconds > 0) _until = DateTime.Now.AddSeconds(seconds);
         _timer = new System.Windows.Forms.Timer { Interval = 500 };
         _timer.Tick += (_, _) => Tick();
@@ -118,7 +128,23 @@ internal sealed class NoticeForm : Form
     }
 
     protected override bool ShowWithoutActivation => true;
-    protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x80 | 0x08000000; return cp; } }
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= 0x80 | 0x08000000;         // TOOLWINDOW | NOACTIVATE
+            if (_closable) cp.ExStyle |= 0x20;       // TRANSPARENT: cliques passam (só se o aluno puder fechar)
+            return cp;
+        }
+    }
+
+    public void Reassert()
+    {
+        if (IsDisposed) return;
+        Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0,
+            Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_SHOWWINDOW | Native.SWP_NOACTIVATE);
+    }
 
     private void Place()
     {
@@ -133,7 +159,7 @@ internal sealed class NoticeForm : Form
         if (_until is { } u)
         {
             var left = u - DateTime.Now;
-            if (left <= TimeSpan.Zero) { Close(); return; }
+            if (left <= TimeSpan.Zero) { Ended?.Invoke(this); Close(); return; }
             _label.Text = $"{_text}   ⏳ {left.Minutes:0}:{left.Seconds:00}";
         }
         else _label.Text = _text;

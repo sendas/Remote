@@ -174,6 +174,22 @@ Logs no PC: `C:\ProgramData\ClassroomAgent\instalar.log` e `agent.log`.
 - **Bloqueio** com cor à escolha e o logótipo ao centro.
 - **Minimizar tudo** e **silenciar o som** à distância.
 
+## Atualização automática do servidor
+
+O servidor verifica de hora a hora a release **auto** do GitHub e, se houver versão nova, descarrega-a e
+reinicia-se sozinho (agenda uma tarefa que para o serviço, troca o executável e volta a arrancar).
+
+- Forçar já: `C:\ClassroomServer\ClassroomServer.exe update`
+- Desligar: em `classroom-server.json`, `"AutoUpdate": false` (ou mudar `UpdateCheckMinutes`).
+- **Windows Server 2008 R2:** a ligação de saída ao GitHub precisa de TLS 1.2 no SChannel. Se não estiver
+  ativo, a verificação falha (fica no log) e as atualizações continuam a fazer-se à mão. Ativar o TLS 1.2 de
+  cliente no registo resolve, mas pode exigir reiniciar o servidor.
+
+## Aviso que bloqueia / não se pode fechar
+
+No diálogo **📣 Aviso no ecrã**: desmarca "O aluno pode fechar o aviso" para uma faixa persistente, e marca
+"🔒 Bloquear o PC quando a contagem acabar" para, por exemplo, mostrar "Faltam 5 minutos" e bloquear ao fim.
+
 ## Segurança e RGPD
 
 - Ver o ecrã de alunos é tratamento de dados pessoais (muitas vezes de menores). Antes de usar:
