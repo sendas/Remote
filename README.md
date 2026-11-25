@@ -185,10 +185,13 @@ reinicia-se sozinho (agenda uma tarefa que para o serviço, troca o executável 
   ativo, a verificação falha (fica no log) e as atualizações continuam a fazer-se à mão. Ativar o TLS 1.2 de
   cliente no registo resolve, mas pode exigir reiniciar o servidor.
 
-## Aviso que bloqueia / não se pode fechar
+## Avisos, contagens e bloqueios temporizados
 
-No diálogo **📣 Aviso no ecrã**: desmarca "O aluno pode fechar o aviso" para uma faixa persistente, e marca
-"🔒 Bloquear o PC quando a contagem acabar" para, por exemplo, mostrar "Faltam 5 minutos" e bloquear ao fim.
+- **📣 Aviso no ecrã**: faixa com cor à escolha e contagem decrescente. Desmarca "O aluno pode fechar o aviso"
+  para a tornar persistente (sempre por cima, sem botão de fechar). Em "Quando a contagem acabar" escolhes a
+  ação: nada, **bloquear o PC** (com a duração que quiseres) ou **terminar a sessão**.
+- **🔒 Bloquear**: além de "até eu desbloquear", podes bloquear **durante X minutos** — o ecrã de bloqueio mostra
+  uma **contagem decrescente grande** e desbloqueia sozinho no fim.
 
 ## Segurança e RGPD
 

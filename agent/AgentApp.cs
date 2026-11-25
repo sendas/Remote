@@ -77,8 +77,17 @@ internal sealed class AgentApp : ApplicationContext
         // mantém o bloqueio e a partilha por cima de tudo (e reativa após Ctrl+Alt+Del)
         if (_lock != null)
         {
-            foreach (var f in _lock) f.Reassert();
-            if (Program.RunningAsSystem) Native.BlockInput(true);
+            if (_lockUntil is { } until)
+            {
+                var left = until - DateTime.Now;
+                if (left <= TimeSpan.Zero) { Unlock(); }
+                else foreach (var f in _lock) f.SetCountdown(left);
+            }
+            if (_lock != null)
+            {
+                foreach (var f in _lock) f.Reassert();
+                if (Program.RunningAsSystem) Native.BlockInput(true);
+            }
         }
         else if (_broadcast != null)
         {
@@ -112,7 +121,7 @@ internal sealed class AgentApp : ApplicationContext
         {
             switch (n["type"]?.GetValue<string>())
             {
-                case "lock": Lock(n["text"]?.GetValue<string>(), ParseColor(n["color"]?.GetValue<string>())); break;
+                case "lock": Lock(n["text"]?.GetValue<string>(), ParseColor(n["color"]?.GetValue<string>()), n["seconds"]?.GetValue<int>() ?? 0); break;
                 case "unlock": Unlock(); break;
                 case "message": ShowMessage(n); break;
                 case "chat": ReceiveChat(n); break;
@@ -141,10 +150,12 @@ internal sealed class AgentApp : ApplicationContext
 
     // ------------------------------------------------------------ bloqueio
     private Color? _lockColor;
-    private void Lock(string? text, Color? color)
+    private DateTime? _lockUntil;
+    private void Lock(string? text, Color? color, int seconds = 0)
     {
         _lockText = text;
         _lockColor = color;
+        _lockUntil = seconds > 0 ? DateTime.Now.AddSeconds(seconds) : null;
         if (_lock != null)
         {
             foreach (var f in _lock) f.SetText(text);
@@ -163,6 +174,7 @@ internal sealed class AgentApp : ApplicationContext
         if (Program.RunningAsSystem) Native.BlockInput(false);
         foreach (var f in _lock) { f.AllowClose = true; f.Close(); f.Dispose(); }
         _lock = null;
+        _lockUntil = null;
         if (_broadcast == null) _keys.Disable();
         Log.Write("Desbloqueado");
     }
@@ -294,14 +306,25 @@ internal sealed class AgentApp : ApplicationContext
         var color = ParseColor(n["color"]?.GetValue<string>()) ?? Color.FromArgb(79, 107, 255);
         var secs = n["seconds"]?.GetValue<int>() ?? 0;
         var closable = n["closable"]?.GetValue<bool>() ?? true;
-        var lockAtEnd = n["lockAtEnd"]?.GetValue<bool>() ?? false;
+        var endAction = n["endAction"]?.GetValue<string>() ?? (n["lockAtEnd"]?.GetValue<bool>() == true ? "lock" : "");
+        var endSeconds = n["endSeconds"]?.GetValue<int>() ?? 0;
         _notices.RemoveAll(f => { if (f.Id == id) { f.Close(); return true; } return false; });
         var form = new NoticeForm(id, text, color, secs, closable);
-        if (lockAtEnd && secs > 0)
-            form.Ended += _ => Lock(text, color);
+        if (secs > 0 && endAction.Length > 0)
+            form.Ended += _ => RunEndAction(endAction, text, color, endSeconds);
         form.FormClosed += (_, _) => _notices.Remove(form);
         _notices.Add(form);
         form.Show();
+    }
+
+    private void RunEndAction(string action, string? text, Color? color, int seconds)
+    {
+        switch (action)
+        {
+            case "lock": Lock(text, color, seconds); break;   // seconds>0 => bloqueio com contagem e desbloqueio automático
+            case "logoff": Logoff(); break;
+            case "message": ShowMessage(JsonNode.Parse($"{{\"from\":\"Professor\",\"title\":\"Aviso\",\"text\":{System.Text.Json.JsonSerializer.Serialize(text ?? "")},\"allowReply\":false}}")!); break;
+        }
     }
 
     private void ClearNotices()

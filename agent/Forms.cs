@@ -48,12 +48,14 @@ internal class CoverForm : Form
 internal sealed class LockForm : CoverForm
 {
     private readonly Label _text;
+    private readonly Label _count;
     private readonly PictureBox _logo;
 
     public LockForm(Screen screen, string? text, Color? color) : base(screen)
     {
         var bg = color ?? Color.FromArgb(18, 24, 38);
         BackColor = bg;
+        var fg = Contrast(bg);
         _logo = new PictureBox
         {
             Image = AppIcon.Bitmap(96),
@@ -61,18 +63,40 @@ internal sealed class LockForm : CoverForm
             BackColor = Color.Transparent,
             Anchor = AnchorStyles.None,
         };
+        _count = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 160,
+            ForeColor = fg,
+            TextAlign = ContentAlignment.TopCenter,
+            Font = new Font("Segoe UI", 80f, FontStyle.Bold),
+            BackColor = Color.Transparent,
+            Visible = false,
+        };
         _text = new Label
         {
             Dock = DockStyle.Fill,
-            ForeColor = Contrast(bg),
+            ForeColor = fg,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 32f, FontStyle.Bold),
             BackColor = Color.Transparent,
         };
         Controls.Add(_text);
+        Controls.Add(_count);
         Controls.Add(_logo);
-        Shown += (_, _) => _logo.Location = new Point((ClientSize.Width - _logo.Width) / 2, ClientSize.Height / 2 - 150);
+        Shown += (_, _) => _logo.Location = new Point((ClientSize.Width - _logo.Width) / 2, ClientSize.Height / 2 - 220);
         SetText(text);
+    }
+
+    /// <summary>Mostra (ou esconde) a contagem grande no ecrã de bloqueio.</summary>
+    public void SetCountdown(TimeSpan? left)
+    {
+        if (left is { } t && t > TimeSpan.Zero)
+        {
+            _count.Visible = true;
+            _count.Text = t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+        }
+        else _count.Visible = false;
     }
 
     public void SetText(string? text) =>

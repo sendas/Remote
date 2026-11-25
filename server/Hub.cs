@@ -426,7 +426,7 @@ public sealed class Hub
                 foreach (var a in targets)
                 {
                     a.Locked = lockIt;
-                    a.SendJson(new { type = action, text = Clean(n["text"]?.GetValue<string>(), 300), color = Clean(n["color"]?.GetValue<string>(), 7) });
+                    a.SendJson(new { type = action, text = Clean(n["text"]?.GetValue<string>(), 300), color = Clean(n["color"]?.GetValue<string>(), 7), seconds = Math.Clamp(n["seconds"]?.GetValue<int>() ?? 0, 0, 14400) });
                     BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
                 }
                 break;
@@ -512,7 +512,8 @@ public sealed class Hub
                     color = Clean(n["color"]?.GetValue<string>(), 7),
                     seconds = Math.Clamp(n["seconds"]?.GetValue<int>() ?? 0, 0, 7200),
                     closable = n["closable"]?.GetValue<bool>() ?? true,
-                    lockAtEnd = n["lockAtEnd"]?.GetValue<bool>() ?? false,
+                    endAction = Clean(n["endAction"]?.GetValue<string>(), 12),
+                    endSeconds = Math.Clamp(n["endSeconds"]?.GetValue<int>() ?? 0, 0, 14400),
                 };
                 foreach (var a in targets) a.SendJson(notice);
                 break;

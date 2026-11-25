@@ -367,8 +367,10 @@
       case "procs": return openProcs([...ids][0]);
       case "chat": return openThread([...ids][0]);
       case "notice": return openDialog("#noticeDialog", ids, (f) => {
+        const endAction = f.get("endAction") || "";
         cmd("notice", ids, { text: f.get("text"), color: f.get("color"), seconds: +f.get("seconds"),
-          closable: f.get("closable") === "on", lockAtEnd: f.get("lockAtEnd") === "on" });
+          closable: f.get("closable") === "on", endAction,
+          endSeconds: endAction === "lock" ? (+(f.get("endMinutes") || 0)) * 60 : 0 });
         toast(`\u{1F4E3} Aviso em ${ids.size} PC(s)`);
       });
       case "minimize": cmd("minimize", ids); return toast("Minimizado");
@@ -424,10 +426,13 @@
 
   function openLock(ids) {
     openDialog("#lockDialog", ids, (f) => {
-      cmd("lock", ids, { text: String(f.get("text") || ""), color: f.get("color") });
+      cmd("lock", ids, { text: String(f.get("text") || ""), color: f.get("color"), seconds: +(f.get("seconds") || 0) });
       toast(`🔒 Bloqueados: ${ids.size}`);
     });
   }
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "endAction") $("#endLockWrap").hidden = e.target.value !== "lock";
+  });
   $("#lockPresets").addEventListener("click", (e) => {
     const b = e.target.closest(".chip");
     if (b) $("#lockDialog [name=text]").value = b.textContent;

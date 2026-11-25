@@ -29,7 +29,8 @@ ws.onmessage = (ev) => {
   if (m.type === "notice") console.log(`[${name}] aviso: ${m.text} (${m.color}, ${m.seconds}s)`);
   if (m.type === "minimize") console.log(`[${name}] minimizar tudo`);
   if (m.type === "mute") console.log(`[${name}] som ${m.on ? "off" : "on"}`);
-  if (m.type === "lock") console.log(`[${name}] bloqueado cor=${m.color}`);
+  if (m.type === "lock") console.log(`[${name}] bloqueado cor=${m.color} seconds=${m.seconds}`);
+  if (m.type === "unlock") console.log(`[${name}] desbloqueado`);
   if (m.type === "stream") {
     clearInterval(streamTimer);
     if (m.on) streamTimer = setInterval(() => ws.send(frame(0x02)), 1000 / m.fps);

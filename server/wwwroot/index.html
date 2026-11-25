@@ -141,6 +141,16 @@
     </div>
     <label>Cor do ecrã <span class="swatches" data-swatches></span></label>
     <input type="hidden" name="color" value="#121826">
+    <label>Duração
+      <select name="seconds">
+        <option value="0">Até eu desbloquear</option>
+        <option value="300">5 minutos</option>
+        <option value="600">10 minutos</option>
+        <option value="900">15 minutos</option>
+        <option value="1800">30 minutos</option>
+        <option value="3600">1 hora</option>
+      </select>
+    </label>
     <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Bloquear</button></div>
   </form>
 </dialog>
@@ -172,7 +182,22 @@
       </select>
     </label>
     <label class="check"><input type="checkbox" name="closable" checked> O aluno pode fechar o aviso</label>
-    <label class="check"><input type="checkbox" name="lockAtEnd"> 🔒 Bloquear o PC quando a contagem acabar</label>
+    <label>Quando a contagem acabar
+      <select name="endAction" id="endAction">
+        <option value="">Nada (só esconder o aviso)</option>
+        <option value="lock">🔒 Bloquear o PC</option>
+        <option value="logoff">↩ Terminar a sessão</option>
+      </select>
+    </label>
+    <label id="endLockWrap" hidden>Bloquear durante
+      <select name="endMinutes">
+        <option value="0">Até eu desbloquear</option>
+        <option value="5">5 minutos</option>
+        <option value="10" selected>10 minutos</option>
+        <option value="15">15 minutos</option>
+        <option value="30">30 minutos</option>
+      </select>
+    </label>
     <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Mostrar</button></div>
   </form>
 </dialog>
