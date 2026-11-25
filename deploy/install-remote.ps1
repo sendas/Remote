@@ -4,7 +4,9 @@
   Corre no servidor onde está o ClassroomServer, dentro da pasta SalaDeAula-Agente:
 
       .\install-remote.ps1 -Computer DESKTOP-16PB879
-      .\install-remote.ps1 -Computer DESKTOP-16PB879 -Room TIC1
+      .\install-remote.ps1 -Computer DESKTOP-16PB879 -School EBVG -Room 'Sala TIC1'
+         (instalação manual, para PCs que a deteção automática pelo MAC não encontra;
+          -Room é o nome da PASTA no AD — o nome mostrado na consola vem de "Escolas e salas")
       .\install-remote.ps1 -Computer DESKTOP-16PB879 -Uninstall
 
   Lê sozinho a EnrollmentKey e o CertificatePin do servidor (C:\ClassroomServer).
@@ -13,6 +15,7 @@
 param(
     [Parameter(Mandatory)][string]$Computer,
     [string]$Room = 'TESTE',
+    [string]$School = '',
     [string]$ServerUrl = '',
     [string]$ServerDir = 'C:\ClassroomServer',
     [switch]$Uninstall
@@ -52,10 +55,16 @@ if ($Uninstall) {
 }
 
 Passo "A verificar a versão do Windows"
-if (-not (Test-Path "\\$pc\C$\Windows\SystemApps")) {
-    throw "$pc não parece ter Windows 10/11 (este agente não funciona em Windows 7/8)."
+# usa a versão "leve" (Windows 7 a 11): precisa do .NET Framework 4.6.2 ou mais recente no PC
+$net = $null
+foreach ($d in 'Framework64', 'Framework') {
+    $f = "\\$pc\C$\Windows\Microsoft.NET\$d\v4.0.30319\clr.dll"
+    if (Test-Path $f) { $net = [version]((Get-Item $f).VersionInfo.FileVersion -split ' ')[0]; break }
 }
-Write-Host "   Windows 10/11"
+if ($null -eq $net -or $net -lt [version]'4.6.1586') {
+    throw "$pc não tem o .NET Framework 4.6.2 ou mais recente (tem: $net). Instala o .NET Framework 4.8 nesse PC e repete."
+}
+Write-Host "   .NET Framework $net"
 
 Passo "A ler a chave e o certificado do servidor"
 $key = (& "$ServerDir\ClassroomServer.exe" show-key | Select-Object -Last 1).Trim()
@@ -74,13 +83,13 @@ $urls = @("pipe://$($env:COMPUTERNAME)/SalaDeAula", $ServerUrl)
 Write-Host "   Servidor: $($urls -join '  |  ')"
 
 Passo "A copiar o agente (≈70 MB, pode demorar um minuto)"
-$exe = Join-Path $PSScriptRoot 'ClassroomAgent.exe'
-if (-not (Test-Path $exe)) { throw "Não encontro $exe. Corre este script dentro da pasta SalaDeAula-Agente." }
+$leve = Join-Path $PSScriptRoot 'leve'
+if (-not (Test-Path (Join-Path $leve 'ClassroomAgent.exe'))) { throw "Não encontro $leve. Corre este script dentro da pasta do agente." }
 sc.exe \\$pc stop ClassroomAgent | Out-Null
 Start-Sleep 2
 New-Item $prog -ItemType Directory -Force | Out-Null
 New-Item $data -ItemType Directory -Force | Out-Null
-Copy-Item $exe $prog -Force
+Copy-Item (Join-Path $leve '*') $prog -Force
 
 $json = @"
 {
@@ -88,6 +97,7 @@ $json = @"
   "EnrollmentKey": "$key",
   "CertificatePin": "$pin",
   "Room": "$Room",
+  "School": "$School",
   "ShowViewIndicator": true
 }
 "@

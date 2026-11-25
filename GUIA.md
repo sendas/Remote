@@ -127,6 +127,23 @@ Atalhos: clique seleciona; **Ctrl/Cmd + clique** seleciona vários; **duplo cliq
 | Um PC ficou sem Internet depois de tirar o agente | No servidor: `.\install-remote.ps1 -Computer NOME-DO-PC -Uninstall` (remove também a regra) |
 | O serviço não para | `Set-Service ClassroomServer -StartupType Disabled` e depois `taskkill /F /IM ClassroomServer.exe` |
 
+## 7b. Faltam PCs numa sala
+
+1. Abre o último relatório: `C:\ClassroomServer\data\instalar-agora-*.csv` (Excel). Para cada PC:
+   | Resultado | O que fazer |
+   |---|---|
+   | desligado ou inacessível | Liga-o e repete `.\instalar-agora.ps1 -Computadores 'NOME'` |
+   | Sem sala: nenhum MAC… | O MAC do PC não está em nenhuma pasta de sala do AD → instala à mão (abaixo) ou acrescenta a conta MAC na pasta certa |
+   | falta o .NET Framework | Instala o .NET Framework 4.8 nesse PC (Windows Update ou instalador offline) e repete |
+   | ERRO… | Envia as últimas linhas de `\\NOME\C$\ProgramData\ClassroomAgent\agent.log` |
+2. Se não sabes o nome de um PC: no próprio PC, *Definições → Sistema → Acerca de* (ou escreve `hostname` na linha de comandos).
+3. **Instalação à mão** (indicas tu a escola e a pasta da sala no AD):
+   ```powershell
+   cd C:\SalaViva\Agente
+   .\install-remote.ps1 -Computer 'NOME-DO-PC' -School EBVG -Room 'Sala TIC1' -ServerUrl 'wss://10.210.118.246:8443/ws/agent'
+   ```
+   Estes PCs não se atualizam sozinhos pela GPO (a GPO não os reconhece pelo MAC): repete o comando quando houver versão nova.
+
 ## 8. Atualizações automáticas
 
 - O servidor verifica **de hora a hora** a release do GitHub. Se houver versão nova, atualiza o programa e
