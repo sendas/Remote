@@ -1026,7 +1026,8 @@
   });
   $("#sysUpdateNow").addEventListener("click", async () => {
     if (!confirm("Atualizar já? Se houver versão nova, o servidor reinicia dentro de ~1 minuto e a consola desliga-se durante esse tempo.")) return;
-    try { const r = await api("/api/admin/update?now=1", { method: "POST" }); toast(r.message); } catch (e) { toast(e.message); }
+    toast("⏳ A descarregar a versão nova do GitHub… (pode demorar 1–2 min)");
+    try { const r = await api("/api/admin/update?now=1", { method: "POST" }); toast(r.message); loadSystem(); } catch (e) { toast(e.message); }
     loadSystem();
   });
   $("#sysInstallNow").addEventListener("click", async () => {
