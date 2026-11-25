@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace ClassroomServer;
@@ -6,14 +6,36 @@ namespace ClassroomServer;
 public sealed class TeacherAccount
 {
     public string Username { get; set; } = "";
+    public string DisplayName { get; set; } = "";
     public string PasswordHash { get; set; } = "";
-    /// <summary>Salas que este professor pode controlar. Vazio = todas.</summary>
+    /// <summary>Administrador: vê todas as salas e gere os utilizadores.</summary>
+    public bool IsAdmin { get; set; }
+    /// <summary>Salas que este professor pode controlar ("*" = todas). Ignorado para administradores.</summary>
     public List<string> Rooms { get; set; } = new();
+
+    /// <summary>Acesso: "*" = tudo; "EBVG/*" = escola inteira; "EBVG/Sala TIC1" = uma sala.</summary>
+    public bool CanSee(string school, string room) =>
+        IsAdmin || Rooms.Contains("*") ||
+        Rooms.Contains(school + "/*", StringComparer.OrdinalIgnoreCase) ||
+        Rooms.Contains(school + "/" + room, StringComparer.OrdinalIgnoreCase) ||
+        (school.Length == 0 && Rooms.Contains(room, StringComparer.OrdinalIgnoreCase));
 }
 
 public sealed class ServerConfig
 {
+    public int ConfigVersion { get; set; }
     public int Port { get; set; } = 8443;
+    /// <summary>Nome e frase mostrados na página de login e no topo da consola.</summary>
+    public string BrandName { get; set; } = "SalaViva";
+    public string BrandTagline { get; set; } = "A sala inteira, num só ecrã.";
+    /// <summary>Escolas do agrupamento (Id = nome da pasta no AD).</summary>
+    public List<School> Schools { get; set; } = new();
+    /// <summary>Pasta do AD com uma subpasta por escola e, dentro, as pastas das salas com as contas MAC dos PCs.</summary>
+    public string AdBase { get; set; } = "OU=_Computadores MAC AEEQ,DC=queiroz,DC=local";
+    /// <summary>Nome na consola e instalação ativa, por pasta do AD.</summary>
+    public List<RoomRule> Rooms { get; set; } = new();
+    /// <summary>Pasta partilhada de instalação (instalar.json é atualizado quando se mudam as salas ativas).</summary>
+    public string DeployDir { get; set; } = @"C:\Deploy\SalaDeAula";
     /// <summary>Chave partilhada que os agentes dos alunos têm de apresentar.</summary>
     public string EnrollmentKey { get; set; } = "";
     public List<TeacherAccount> Teachers { get; set; } = new();
@@ -68,6 +90,13 @@ public sealed class ServerConfig
                       ?? throw new InvalidOperationException("Configuração inválida.");
             if (string.IsNullOrWhiteSpace(cfg.EnrollmentKey))
                 throw new InvalidOperationException("EnrollmentKey vazia em " + ConfigPath);
+            if (cfg.ConfigVersion < 2)
+            {
+                // versão 1: "sem salas" queria dizer "todas" -> essas contas passam a administradores
+                foreach (var t in cfg.Teachers.Where(t => t.Rooms.Count == 0)) t.IsAdmin = true;
+                cfg.ConfigVersion = 2;
+                cfg.Save();
+            }
             return cfg;
         }
 
@@ -75,7 +104,8 @@ public sealed class ServerConfig
         var created = new ServerConfig
         {
             EnrollmentKey = RandomToken(24),
-            Teachers = { new TeacherAccount { Username = "admin", PasswordHash = PasswordHasher.Hash(pwd) } },
+            ConfigVersion = 2,
+            Teachers = { new TeacherAccount { Username = "admin", DisplayName = "Administrador", IsAdmin = true, PasswordHash = PasswordHasher.Hash(pwd) } },
         };
         created.Save();
         firstRunMessage =
@@ -88,7 +118,18 @@ public sealed class ServerConfig
         return created;
     }
 
-    public void Save() => File.WriteAllText(ConfigPath, JsonSerializer.Serialize(this, JsonOpts));
+    private static readonly object SaveGate = new();
+
+    public void Save()
+    {
+        lock (SaveGate)
+        {
+            var tmp = ConfigPath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(this, JsonOpts));
+            File.Copy(tmp, ConfigPath, true);
+            File.Delete(tmp);
+        }
+    }
 
     public static string RandomToken(int bytes) =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(bytes))

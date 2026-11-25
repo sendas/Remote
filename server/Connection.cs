@@ -122,7 +122,13 @@ public sealed class AgentConnection : Connection
 
     public string Id { get; set; } = "";
     public string Hostname { get; set; } = "";
+    /// <summary>Nome da sala na consola (resolvido a partir de escola + pasta do AD).</summary>
     public string Room { get; set; } = "";
+    /// <summary>Escola (pasta do AD, ex.: EBVG) e pasta da sala no AD, tal como o agente as envia.</summary>
+    public string School { get; set; } = "";
+    public string SchoolName { get; set; } = "";
+    public string Folder { get; set; } = "";
+    public string Key => School + "/" + Room;
     public string User { get; set; } = "";
     public string Os { get; set; } = "";
     public string Version { get; set; } = "";
@@ -146,6 +152,9 @@ public sealed class AgentConnection : Connection
         id = Id,
         hostname = Hostname,
         room = Room,
+        school = School,
+        schoolName = SchoolName,
+        key = Key,
         user = User,
         os = Os,
         version = Version,
@@ -172,7 +181,9 @@ public sealed class TeacherConnection : Connection
 
     public bool ViewsRoom(AgentConnection a) =>
         ThumbMinIntervalMs >= 0 && MayControl(a) &&
-        (RoomFilter == null || string.Equals(RoomFilter, a.Room, StringComparison.OrdinalIgnoreCase));
+        (RoomFilter == null ||
+         string.Equals(RoomFilter, a.Key, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(RoomFilter, a.School + "/*", StringComparison.OrdinalIgnoreCase));
     private readonly ConcurrentDictionary<string, long> _lastThumb = new();
 
     public bool WantsThumb(string agentId)
@@ -186,6 +197,5 @@ public sealed class TeacherConnection : Connection
         return true;
     }
 
-    public bool MayControl(AgentConnection a) =>
-        Session.Rooms.Count == 0 || Session.Rooms.Contains(a.Room, StringComparer.OrdinalIgnoreCase);
+    public bool MayControl(AgentConnection a) => Session.Account.CanSee(a.School, a.Room);
 }

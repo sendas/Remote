@@ -3,113 +3,238 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sala de Aula</title>
+  <title>SalaViva</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <!-- ============================ login ============================ -->
 <section id="login" class="login">
-  <form id="loginForm" class="card login-card" autocomplete="on">
-    <h1>Sala de Aula</h1>
-    <p class="muted">Consola do professor</p>
-    <label>Utilizador <input name="username" autocomplete="username" required></label>
+  <div class="login-bg" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <img src="logo.svg" alt="" class="login-logo" width="96" height="96">
+    <h1 class="brand-name" data-brand-name>SalaViva</h1>
+    <p class="tagline" data-brand-tagline>A sala inteira, num só ecrã.</p>
+    <label>Utilizador <input name="username" autocomplete="username" required autofocus></label>
     <label>Palavra-passe <input name="password" type="password" autocomplete="current-password" required></label>
-    <button type="submit" class="primary">Entrar</button>
+    <button type="submit" class="primary big">Entrar</button>
     <p id="loginError" class="error" role="alert"></p>
+    <p class="schools">EB Vasco da Gama · ES Eça de Queirós · EB Parque das Nações</p>
   </form>
 </section>
 
 <!-- ============================ consola ============================ -->
 <section id="console" class="console" hidden>
   <header class="topbar">
-    <div class="brand">Sala de Aula</div>
-    <label class="room">Sala
-      <select id="roomFilter"><option value="">Todas</option></select>
-    </label>
-    <label class="room">Rede
-      <select id="netMode" title="Em hotspot, reduz os dados recebidos">
-        <option value="0">Normal</option>
-        <option value="10000">Poupança (hotspot)</option>
-        <option value="-1">Sem miniaturas</option>
-      </select>
-    </label>
-    <span id="status" class="pill">A ligar…</span>
+    <div class="brand"><img src="logo.svg" alt="" width="30" height="30"><span data-brand-name>SalaViva</span></div>
+    <select id="roomFilter" class="room-select" aria-label="Sala"></select>
+    <input id="search" type="search" placeholder="Procurar PC ou aluno…" aria-label="Procurar">
+    <span id="counts" class="counts"></span>
     <span class="spacer"></span>
-    <span id="who" class="muted"></span>
-    <button id="logoutBtn" class="ghost">Sair</button>
+    <label class="mini" title="Tamanho das miniaturas">🔍 <input id="zoom" type="range" min="160" max="420" value="240"></label>
+    <select id="netMode" class="mini-select" title="Rede: em hotspot, reduz os dados recebidos">
+      <option value="0">Rede normal</option>
+      <option value="10000">Poupança (hotspot)</option>
+      <option value="-1">Sem miniaturas</option>
+    </select>
+    <span id="status" class="pill">A ligar…</span>
+    <div class="menu">
+      <button id="userBtn" class="ghost user-btn" aria-haspopup="true"><span id="who"></span> ▾</button>
+      <div id="userMenu" class="menu-list" hidden>
+        <button data-act="password">🔑 Mudar palavra-passe</button>
+        <button data-act="users" data-admin>👥 Utilizadores</button>
+        <button data-act="rooms" data-admin>🏫 Escolas e salas</button>
+        <hr>
+        <button data-act="logout">↩ Sair</button>
+      </div>
+    </div>
   </header>
 
   <div class="toolbar" role="toolbar">
-    <button id="selAll">Selecionar todos</button>
-    <button id="selNone">Limpar seleção</button>
-    <span id="selCount" class="muted">0 selecionados</span>
+    <button id="selAll">☑ Todos</button>
+    <button id="selNone">☐ Nenhum</button>
+    <span id="selCount" class="muted"></span>
     <span class="sep"></span>
-    <button id="lockBtn" data-needs-sel>🔒 Bloquear</button>
-    <button id="unlockBtn" data-needs-sel>🔓 Desbloquear</button>
-    <button id="msgBtn" data-needs-sel>💬 Mensagem</button>
-    <button id="urlBtn" data-needs-sel>🌐 Abrir link</button>
+    <button data-cmd="lock" data-needs-sel class="c-red">🔒 Bloquear</button>
+    <button data-cmd="unlock" data-needs-sel>🔓 Desbloquear</button>
+    <button data-cmd="message" data-needs-sel class="c-blue">💬 Mensagem</button>
+    <button data-cmd="openUrl" data-needs-sel>🌐 Abrir link</button>
+    <button data-cmd="type" data-needs-sel>⌨ Escrever texto</button>
     <span class="sep"></span>
     <button id="shareBtn" data-needs-sel class="primary">📺 Partilhar o meu ecrã</button>
     <button id="shareStopBtn" hidden class="danger">⏹ Parar partilha</button>
     <span class="sep"></span>
-    <button id="logoffBtn" data-needs-sel>Terminar sessão</button>
-    <button id="rebootBtn" data-needs-sel>Reiniciar</button>
-    <button id="shutdownBtn" data-needs-sel class="danger">Desligar</button>
+    <button data-cmd="logoff" data-needs-sel>Terminar sessão</button>
+    <button data-cmd="reboot" data-needs-sel>Reiniciar</button>
+    <button data-cmd="shutdown" data-needs-sel class="danger">⏻ Desligar</button>
   </div>
 
   <main class="main">
     <div id="grid" class="grid" aria-live="polite"></div>
-    <p id="empty" class="empty muted">Nenhum computador ligado. Confirma que o agente está instalado nos PCs dos alunos e que a VLAN dos alunos consegue chegar ao servidor.</p>
-
+    <div id="empty" class="empty" hidden>
+      <img src="logo.svg" alt="" width="72" height="72">
+      <p><strong>Nenhum computador ligado nesta sala.</strong></p>
+      <p class="muted">Os PCs aparecem aqui assim que arrancam. Escolhe outra sala no menu acima.</p>
+    </div>
     <aside class="side">
-      <h2>Mensagens</h2>
+      <h2>💬 Mensagens</h2>
       <ol id="chat" class="chat"></ol>
     </aside>
   </main>
 </section>
 
+<!-- menu de contexto de cada PC -->
+<div id="ctx" class="menu-list ctx" hidden>
+  <button data-ctx="view">🖥 Ver / controlar</button>
+  <button data-ctx="message">💬 Mensagem</button>
+  <button data-ctx="lock">🔒 Bloquear</button>
+  <button data-ctx="unlock">🔓 Desbloquear</button>
+  <button data-ctx="procs">📋 Programas abertos</button>
+  <button data-ctx="type">⌨ Escrever texto</button>
+  <button data-ctx="openUrl">🌐 Abrir link</button>
+  <hr>
+  <button data-ctx="logoff">Terminar sessão</button>
+  <button data-ctx="reboot">Reiniciar</button>
+  <button data-ctx="shutdown" class="danger">⏻ Desligar</button>
+</div>
+
 <!-- ============================ diálogos ============================ -->
 <dialog id="msgDialog">
   <form method="dialog" class="dlg">
-    <h2>Enviar mensagem</h2>
-    <p class="muted" id="msgTargets"></p>
+    <h2>💬 Enviar mensagem</h2>
+    <p class="muted" data-targets></p>
     <label>Título <input name="title" maxlength="120" value="Aviso do professor"></label>
     <label>Mensagem <textarea name="text" rows="5" maxlength="4000" required></textarea></label>
     <label class="check"><input type="checkbox" name="allowReply" checked> Permitir resposta</label>
-    <div class="actions">
-      <button value="cancel" formnovalidate>Cancelar</button>
-      <button value="ok" class="primary">Enviar</button>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Enviar</button></div>
+  </form>
+</dialog>
+
+<dialog id="lockDialog">
+  <form method="dialog" class="dlg">
+    <h2>🔒 Bloquear</h2>
+    <p class="muted" data-targets></p>
+    <label>Texto no ecrã (opcional) <input name="text" maxlength="300" placeholder="Atenção ao professor"></label>
+    <div class="chips" id="lockPresets">
+      <button type="button" class="chip">Atenção ao professor</button>
+      <button type="button" class="chip">Olhos no quadro 👀</button>
+      <button type="button" class="chip">Intervalo ☕</button>
+      <button type="button" class="chip">Fim da aula 👋</button>
     </div>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Bloquear</button></div>
   </form>
 </dialog>
 
 <dialog id="urlDialog">
   <form method="dialog" class="dlg">
-    <h2>Abrir link nos PCs selecionados</h2>
+    <h2>🌐 Abrir link</h2>
+    <p class="muted" data-targets></p>
     <label>Endereço <input name="url" type="url" placeholder="https://" required></label>
-    <div class="actions">
-      <button value="cancel" formnovalidate>Cancelar</button>
-      <button value="ok" class="primary">Abrir</button>
-    </div>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Abrir</button></div>
   </form>
+</dialog>
+
+<dialog id="typeDialog">
+  <form method="dialog" class="dlg">
+    <h2>⌨ Escrever texto</h2>
+    <p class="muted" data-targets></p>
+    <p class="muted small">O texto é escrito onde estiver o cursor no PC do aluno (ex.: um link, um código, o nome de um ficheiro).</p>
+    <label>Texto <textarea name="text" rows="3" maxlength="2000" required></textarea></label>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Escrever</button></div>
+  </form>
+</dialog>
+
+<dialog id="procsDialog">
+  <div class="dlg wide">
+    <h2>📋 Programas abertos — <span data-targets></span></h2>
+    <table class="table"><thead><tr><th>Programa</th><th>Janela</th><th></th></tr></thead><tbody id="procsBody"></tbody></table>
+    <div class="actions"><button id="procsRefresh">↻ Atualizar</button><button id="procsClose" class="primary">Fechar</button></div>
+  </div>
+</dialog>
+
+<dialog id="pwDialog">
+  <form method="dialog" class="dlg">
+    <h2>🔑 Mudar palavra-passe</h2>
+    <label>Palavra-passe atual <input name="current" type="password" autocomplete="current-password" required></label>
+    <label>Nova (mínimo 8) <input name="next" type="password" minlength="8" autocomplete="new-password" required></label>
+    <label>Repetir a nova <input name="next2" type="password" minlength="8" autocomplete="new-password" required></label>
+    <p class="error" data-error></p>
+    <div class="actions"><button value="cancel" formnovalidate>Cancelar</button><button value="ok" class="primary">Guardar</button></div>
+  </form>
+</dialog>
+
+<dialog id="usersDialog" class="big-dlg">
+  <div class="dlg wide">
+    <h2>👥 Utilizadores</h2>
+    <div class="split">
+      <div>
+        <table class="table"><thead><tr><th>Utilizador</th><th>Acesso</th></tr></thead><tbody id="usersBody"></tbody></table>
+        <button id="userNew" class="primary">＋ Novo colega</button>
+      </div>
+      <form id="userForm" class="user-form" hidden>
+        <h3 id="userFormTitle">Novo colega</h3>
+        <label>Utilizador <input name="username" required pattern="[\w.\-@]{2,64}" placeholder="ex.: maria.silva"></label>
+        <label>Nome <input name="displayName" placeholder="ex.: Maria Silva"></label>
+        <label>Palavra-passe <input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
+        <label class="check"><input type="checkbox" name="isAdmin"> Administrador (todas as salas + gerir utilizadores e salas)</label>
+        <fieldset class="rooms-pick" id="roomsPick"><legend>Salas a que tem acesso</legend></fieldset>
+        <p class="error" data-error></p>
+        <div class="actions">
+          <button type="button" id="userDelete" class="danger" hidden>Apagar</button>
+          <span class="spacer"></span>
+          <button type="button" id="userCancel">Cancelar</button>
+          <button type="submit" class="primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+    <div class="actions"><button id="usersClose">Fechar</button></div>
+  </div>
+</dialog>
+
+<dialog id="roomsDialog" class="big-dlg">
+  <div class="dlg wide">
+    <h2>🏫 Escolas e salas</h2>
+    <p class="muted small">Cada linha é uma pasta do Active Directory com as contas (MAC) dos PCs. Dá-lhe o nome com que aparece na consola —
+      pastas com o <strong>mesmo nome</strong> ficam no mesmo grupo — e ativa <strong>Instalar</strong> para os PCs dessa pasta receberem o agente no próximo arranque.</p>
+    <p id="roomsAdWarn" class="warn" hidden></p>
+    <div id="schoolTabs" class="tabs"></div>
+    <label class="school-name">Nome da escola <input id="schoolName"></label>
+    <table class="table"><thead><tr><th>Pasta no AD</th><th>PCs</th><th>Nome na consola (grupo)</th><th>Instalar</th></tr></thead><tbody id="roomsBody"></tbody></table>
+    <datalist id="roomNames"></datalist>
+    <p class="error" data-error></p>
+    <div class="actions"><button id="roomsCancel">Cancelar</button><button id="roomsSave" class="primary">Guardar</button></div>
+  </div>
 </dialog>
 
 <dialog id="viewer" class="viewer">
   <div class="viewer-bar">
     <strong id="viewerTitle"></strong>
-    <label class="check"><input type="checkbox" id="controlToggle"> Controlo remoto (rato e teclado)</label>
+    <label class="check toggle"><input type="checkbox" id="controlToggle"> 🖱 Controlo remoto</label>
+    <span class="keys" id="viewerKeys" hidden>
+      <button data-keys="27">Esc</button>
+      <button data-keys="91">⊞ Win</button>
+      <button data-keys="164+9">Alt+Tab</button>
+      <button data-keys="164+115">Alt+F4</button>
+      <button data-keys="162+67">Ctrl+C</button>
+      <button data-keys="162+86">Ctrl+V</button>
+    </span>
     <span class="spacer"></span>
-    <button id="viewerLock">🔒 Bloquear</button>
-    <button id="viewerMsg">💬 Mensagem</button>
+    <button id="viewerProcs">📋 Programas</button>
+    <button id="viewerType">⌨ Texto</button>
+    <button id="viewerLock" class="c-red">🔒 Bloquear</button>
+    <button id="viewerMsg" class="c-blue">💬 Mensagem</button>
+    <button id="viewerSave" title="Guardar imagem">📷</button>
+    <button id="viewerFull" title="Ecrã inteiro">⛶</button>
     <button id="viewerClose" class="primary">Fechar</button>
   </div>
-  <div class="viewer-stage">
+  <div class="viewer-stage" id="viewerStage">
     <img id="viewerImg" alt="Ecrã do aluno" tabindex="0" draggable="false">
     <p id="viewerWait" class="muted">A receber imagem…</p>
   </div>
 </dialog>
 
+<div id="toast" class="toast" hidden></div>
 <video id="shareVideo" hidden muted playsinline></video>
 <canvas id="shareCanvas" hidden></canvas>
 

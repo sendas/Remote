@@ -101,6 +101,7 @@ internal sealed class AgentClient
                     id = Environment.MachineName,
                     hostname = Environment.MachineName,
                     room = _cfg.Room,
+                    school = _cfg.School,
                     user = _currentUser(),
                     os = Environment.OSVersion.VersionString,
                     version = typeof(AgentClient).Assembly.GetName().Version?.ToString(3) ?? "",

@@ -57,6 +57,25 @@ internal static class InputInjector
         }
     }
 
+    /// <summary>Escreve texto no PC do aluno (como se fosse teclado), letra a letra, em Unicode.</summary>
+    public static void TypeText(string text)
+    {
+        foreach (var ch in text.Replace("\r\n", "\n"))
+        {
+            if (ch == '\n')
+            {
+                SendKey(0x0D, false);
+                SendKey(0x0D, true);
+                continue;
+            }
+            Send(new INPUT { type = INPUT_KEYBOARD, U = { ki = { wScan = ch, dwFlags = 0x4 /* UNICODE */ } } });
+            Send(new INPUT { type = INPUT_KEYBOARD, U = { ki = { wScan = ch, dwFlags = 0x4 | KEYUP } } });
+        }
+    }
+
+    private static void SendKey(ushort vk, bool up) =>
+        Send(new INPUT { type = INPUT_KEYBOARD, U = { ki = { wVk = vk, wScan = (ushort)MapVirtualKey(vk, 0), dwFlags = up ? KEYUP : 0 } } });
+
     private static void Mouse(JsonNode n, uint flags, int data = 0)
     {
         // coordenadas normalizadas (0..1) sobre o ecrã virtual -> 0..65535 do Windows

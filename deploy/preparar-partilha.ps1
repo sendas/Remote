@@ -17,8 +17,9 @@
 param(
     [string[]]$Salas,
     [hashtable]$NomesSalas,
-    [string]$PastaSalas = 'OU=EBVG,OU=_Computadores MAC AEEQ,DC=queiroz,DC=local',
-    [string]$SoAbaixoDe = 'Alunos',
+    # Base com uma pasta por escola (EBVG, ESEQ, EBPN). As salas ativas e os nomes gerem-se na consola web.
+    [string]$PastaSalas = 'OU=_Computadores MAC AEEQ,DC=queiroz,DC=local',
+    [string]$SoAbaixoDe = '',
     [string]$Pasta = 'C:\Deploy\SalaDeAula',
     [string]$Partilha = 'SalaDeAula$',
     [string]$ServerDir = 'C:\ClassroomServer',
@@ -47,10 +48,9 @@ if (-not $ServerUrl) {
 # mantém salas ativas e nomes já definidos, a não ser que sejam passados agora
 $jsonPath = "$Pasta\instalar.json"
 $antigo = if (Test-Path $jsonPath) { Get-Content $jsonPath -Raw | ConvertFrom-Json } else { $null }
-if (-not $Salas) { $Salas = if ($antigo) { @($antigo.Salas) } else { @('Sala TIC1') } }
+if (-not $Salas) { $Salas = if ($antigo) { @($antigo.Salas) } else { @('EBVG/Sala TIC1') } }
 $nomes = [ordered]@{}
 if ($antigo -and $antigo.NomesSalas) { $antigo.NomesSalas.PSObject.Properties | ForEach-Object { $nomes[$_.Name] = $_.Value } }
-elseif (-not $antigo) { $nomes['Sala 13'] = 'Sala TIC 2' }
 if ($NomesSalas) { foreach ($k in $NomesSalas.Keys) { $nomes[$k] = $NomesSalas[$k] } }
 
 $cfg = [ordered]@{

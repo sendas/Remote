@@ -45,6 +45,7 @@ builder.WebHost.ConfigureKestrel(k =>
 });
 builder.Services.AddSingleton(cfg);
 builder.Services.AddSingleton<Audit>();
+builder.Services.AddSingleton<RoomCatalog>();
 builder.Services.AddSingleton<Hub>();
 // parar o serviço em poucos segundos, mesmo com ligações abertas (consola, agentes)
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(5));
@@ -104,10 +105,86 @@ app.MapPost("/api/login", async (HttpContext ctx, Hub hub, Audit audit) =>
     return Results.Json(new { token = s.Token, username = s.Username });
 });
 
+TeacherSession? Auth(HttpContext ctx, Hub hub) =>
+    hub.ValidateToken(ctx.Request.Headers.Authorization.ToString().Replace("Bearer ", ""));
+
+// nome e frase (públicos: aparecem na página de login)
+app.MapGet("/api/brand", (ServerConfig c) => Results.Json(new { name = c.BrandName, tagline = c.BrandTagline }));
+
 app.MapGet("/api/me", (HttpContext ctx, Hub hub) =>
 {
-    var s = hub.ValidateToken(ctx.Request.Headers.Authorization.ToString().Replace("Bearer ", ""));
-    return s == null ? Results.Unauthorized() : Results.Json(new { username = s.Username });
+    var s = Auth(ctx, hub);
+    return s == null ? Results.Unauthorized() : Results.Json(new
+    {
+        username = s.Username,
+        displayName = s.Account.DisplayName,
+        isAdmin = s.Account.IsAdmin,
+        rooms = s.Account.Rooms,
+    });
+});
+
+app.MapPost("/api/me/password", async (HttpContext ctx, Hub hub) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    var b = await ctx.Request.ReadFromJsonAsync<PasswordChange>();
+    var err = b == null ? "Pedido inválido." : hub.ChangeOwnPassword(s, b.Current ?? "", b.Next ?? "");
+    return err == null ? Results.Ok() : Results.Json(new { error = err }, statusCode: 400);
+});
+
+// escolas e salas que este utilizador pode ver (para o menu "Sala")
+app.MapGet("/api/catalog", (HttpContext ctx, Hub hub) =>
+{
+    var s = Auth(ctx, hub);
+    return s == null ? Results.Unauthorized() : Results.Json(hub.CatalogFor(s));
+});
+
+// ---------- administração: utilizadores
+app.MapGet("/api/users", (HttpContext ctx, Hub hub) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    return s.Account.IsAdmin ? Results.Json(hub.ListUsers()) : Results.StatusCode(403);
+});
+
+app.MapPost("/api/users", async (HttpContext ctx, Hub hub) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    if (!s.Account.IsAdmin) return Results.StatusCode(403);
+    var u = await ctx.Request.ReadFromJsonAsync<UserEdit>();
+    if (u == null) return Results.BadRequest();
+    var err = hub.SaveUser(s.Username, u.Username ?? "", u.DisplayName, u.Password, u.IsAdmin, u.Rooms, u.Create);
+    return err == null ? Results.Ok() : Results.Json(new { error = err }, statusCode: 400);
+});
+
+app.MapDelete("/api/users/{name}", (string name, HttpContext ctx, Hub hub) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    if (!s.Account.IsAdmin) return Results.StatusCode(403);
+    var err = hub.DeleteUser(s.Username, name);
+    return err == null ? Results.Ok() : Results.Json(new { error = err }, statusCode: 400);
+});
+
+// ---------- administração: escolas e salas (pastas do AD)
+app.MapGet("/api/admin/rooms", (HttpContext ctx, Hub hub, RoomCatalog cat) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    return s.Account.IsAdmin ? Results.Json(cat.AdminView()) : Results.StatusCode(403);
+});
+
+app.MapPost("/api/admin/rooms", async (HttpContext ctx, Hub hub, RoomCatalog cat, Audit audit) =>
+{
+    var s = Auth(ctx, hub);
+    if (s == null) return Results.Unauthorized();
+    if (!s.Account.IsAdmin) return Results.StatusCode(403);
+    var b = await ctx.Request.ReadFromJsonAsync<RoomsEdit>(new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    if (b == null) return Results.BadRequest();
+    cat.Save(b.Schools ?? new(), b.Folders ?? new());
+    audit.Write(s.Username, "salas-alteradas", $"{b.Folders?.Count(f => f.Active)} pastas ativas");
+    return Results.Ok();
 });
 
 app.MapPost("/api/logout", (HttpContext ctx, Hub hub) =>
@@ -150,6 +227,9 @@ app.Run();
 return 0;
 
 internal sealed record LoginRequest(string Username, string Password);
+internal sealed record PasswordChange(string? Current, string? Next);
+internal sealed record UserEdit(string? Username, string? DisplayName, string? Password, bool? IsAdmin, List<string>? Rooms, bool Create);
+internal sealed record RoomsEdit(List<School>? Schools, List<RoomRule>? Folders);
 
 internal static class Cli
 {
@@ -171,6 +251,7 @@ internal static class Cli
                 }
                 t.PasswordHash = PasswordHasher.Hash(args[2]);
                 if (args.Length > 3) t.Rooms = args[3].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+                else t.IsAdmin = true; // sem salas = administrador (vê tudo)
                 cfg.Save();
                 Console.WriteLine($"OK: {t.Username}" + (t.Rooms.Count > 0 ? $" (salas: {string.Join(", ", t.Rooms)})" : " (todas as salas)"));
                 return 0;
@@ -187,7 +268,7 @@ internal static class Cli
             {
                 var cfg = ServerConfig.LoadOrCreate(out _);
                 foreach (var t in cfg.Teachers)
-                    Console.WriteLine($"{t.Username}\t{(t.Rooms.Count == 0 ? "(todas)" : string.Join(",", t.Rooms))}");
+                    Console.WriteLine($"{t.Username}\t{(t.IsAdmin ? "(administrador)" : string.Join(",", t.Rooms))}");
                 return 0;
             }
             case "show-pin":

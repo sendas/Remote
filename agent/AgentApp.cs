@@ -112,6 +112,9 @@ internal sealed class AgentApp : ApplicationContext
                 case "stream": SetIndicator(n["on"]?.GetValue<bool>() ?? false); break;
                 case "input": if (_lock == null) InputInjector.Handle(n); break;
                 case "logoff": Logoff(); break;
+                case "procs": SendProcesses(); break;
+                case "kill": KillProcess(n["pid"]?.GetValue<int>() ?? 0); break;
+                case "type": if (_lock == null) InputInjector.TypeText(n["text"]?.GetValue<string>() ?? ""); break;
                 case "reboot": Run("shutdown.exe", "/r /t 10 /c \"O professor vai reiniciar este computador.\""); break;
                 case "shutdown": Run("shutdown.exe", "/s /t 10 /c \"O professor vai desligar este computador.\""); break;
             }
@@ -214,6 +217,41 @@ internal sealed class AgentApp : ApplicationContext
             _indicator.Dispose();
             _indicator = null;
         }
+    }
+
+    // ------------------------------------------------------------ programas abertos
+    private void SendProcesses()
+    {
+        var list = new List<object>();
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                if (p.SessionId != _session || p.Id == Compat.Pid) continue;
+                var title = p.MainWindowTitle;
+                if (string.IsNullOrWhiteSpace(title)) continue;
+                list.Add(new { pid = p.Id, name = p.ProcessName, title });
+            }
+            catch { }
+            finally { p.Dispose(); }
+        }
+        _client.Post(new { type = "procs", list });
+    }
+
+    private void KillProcess(int pid)
+    {
+        if (pid <= 0) return;
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            // só programas da sessão do aluno, nunca o próprio agente nem processos do sistema
+            if (p.SessionId != _session || p.Id == Compat.Pid || p.ProcessName.Equals("ClassroomAgent", StringComparison.OrdinalIgnoreCase)) return;
+            if (string.IsNullOrWhiteSpace(p.MainWindowTitle)) return;
+            Log.Write($"A fechar {p.ProcessName} ({pid}) a pedido do professor");
+            if (!p.CloseMainWindow() || !p.WaitForExit(3000)) p.Kill();
+        }
+        catch (Exception ex) { Log.Write("Fechar programa: " + ex.Message); }
+        SendProcesses();
     }
 
     // ------------------------------------------------------------ ações de sistema

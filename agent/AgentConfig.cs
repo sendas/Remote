@@ -11,6 +11,8 @@ public sealed class AgentConfig
     public string CertificatePin { get; set; } = "";
     /// <summary>Nome da sala (ex.: "Sala 12"). Vazio = usa o prefixo do nome do PC antes do último "-".</summary>
     public string Room { get; set; } = "";
+    /// <summary>Escola (pasta do AD, ex.: EBVG). O nome da sala na consola é decidido no servidor.</summary>
+    public string School { get; set; } = "";
     /// <summary>Mostra um aviso no ecrã do aluno quando o professor abre o seu ecrã em grande (transparência/RGPD).</summary>
     public bool ShowViewIndicator { get; set; } = true;
 

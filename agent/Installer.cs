@@ -45,19 +45,21 @@ internal static class Installer
             var cfg = LoadConfig(cfgFile);
 
             var macs = LocalMacs();
-            var pasta = FindRoom(cfg, macs);
-            if (pasta == null)
+            var found = FindRoom(cfg, macs);
+            if (found == null)
             {
                 Write($"Sem sala: nenhum MAC deste PC ({string.Join(", ", macs)}) está nas salas de {cfg.PastaSalas}. Nada a fazer.");
                 return 0;
             }
-            var nomes = new Dictionary<string, string>(cfg.NomesSalas, StringComparer.OrdinalIgnoreCase);
-            var sala = nomes.TryGetValue(pasta, out var alias) && !string.IsNullOrWhiteSpace(alias) ? alias : pasta;
+            var (escola, pasta) = found.Value;
+            // o nome mostrado na consola é decidido no servidor (Escolas e salas); aqui guarda-se a pasta do AD
+            var sala = pasta;
             var ativas = cfg.Salas.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
             if (ativas.Count > 0 && !ativas.Contains("*") &&
-                !ativas.Contains(sala, StringComparer.OrdinalIgnoreCase) && !ativas.Contains(pasta, StringComparer.OrdinalIgnoreCase))
+                !ativas.Contains(escola + "/" + pasta, StringComparer.OrdinalIgnoreCase) &&
+                !ativas.Contains(pasta, StringComparer.OrdinalIgnoreCase))
             {
-                Write($"Sala '{sala}' ainda não está ativa em instalar.json. Nada a fazer.");
+                Write($"Sala '{escola}/{pasta}' não está ativa (ativa-a na consola: Escolas e salas). Nada a fazer.");
                 return 0;
             }
 
@@ -67,6 +69,7 @@ internal static class Installer
                 EnrollmentKey = cfg.EnrollmentKey,
                 CertificatePin = cfg.CertificatePin,
                 Room = sala,
+                School = escola,
                 ShowViewIndicator = cfg.ShowViewIndicator,
             }, new JsonSerializerOptions { WriteIndented = true });
 
@@ -77,7 +80,7 @@ internal static class Installer
                            Sc("query ClassroomAgent").Contains("RUNNING");
             if (upToDate)
             {
-                Write($"Já instalado e atualizado (sala '{sala}').");
+                Write($"Já instalado e atualizado (sala '{escola}/{sala}').");
                 return 0;
             }
 
@@ -116,7 +119,7 @@ internal static class Installer
             for (var i = 0; i < 10 && !Sc("query ClassroomAgent").Contains("RUNNING"); i++) Thread.Sleep(1000);
 
             var ok = Sc("query ClassroomAgent").Contains("RUNNING");
-            Write(ok ? $"Instalado (sala '{sala}')." : $"ERRO: serviço não arrancou (sala '{sala}').");
+            Write(ok ? $"Instalado (sala '{escola}/{sala}')." : $"ERRO: serviço não arrancou (sala '{escola}/{sala}').");
             return ok ? 0 : 2;
         }
         catch (Exception ex)
@@ -173,7 +176,7 @@ internal static class Installer
     /// Procura no AD (como conta de computador) uma conta com o MAC do PC — ou com o nome do PC —
     /// e devolve o nome da pasta onde está (a sala).
     /// </summary>
-    private static string? FindRoom(InstallConfig cfg, List<string> macs)
+    private static (string School, string Folder)? FindRoom(InstallConfig cfg, List<string> macs)
     {
         var parts = macs.SelectMany(m => new[] { $"(sAMAccountName={m})", $"(userPrincipalName={m}@*)" }).ToList();
         parts.Add($"(cn={Environment.MachineName})");
@@ -187,10 +190,19 @@ internal static class Installer
             var dn = (string)r.Properties["distinguishedname"][0];
             var comps = System.Text.RegularExpressions.Regex.Split(dn, @",(?=(?:OU|CN|DC)=)");
             if (comps.Length < 2) continue;
+            // escola = pasta logo abaixo da base (ex.: base "_Computadores MAC AEEQ" -> "EBVG");
+            // se a base já for a pasta de uma escola (configuração antiga), é essa.
+            var baseComps = System.Text.RegularExpressions.Regex.Split(cfg.PastaSalas, @",(?=(?:OU|CN|DC)=)");
+            string Val(string c) => c.Substring(c.IndexOf('=') + 1);
+            var baseFirst = Val(baseComps[0]);
+            var idx = comps.Length - baseComps.Length - 1;
+            var escola = !baseFirst.StartsWith("_") && baseComps[0].StartsWith("OU=", StringComparison.OrdinalIgnoreCase)
+                ? baseFirst
+                : idx >= 1 ? Val(comps[idx]) : "";
             var ous = comps.Where(c => c.StartsWith("OU=", StringComparison.OrdinalIgnoreCase)).Select(c => c.Substring(3)).ToList();
             if (!string.IsNullOrWhiteSpace(cfg.SoAbaixoDe) && !ous.Contains(cfg.SoAbaixoDe, StringComparer.OrdinalIgnoreCase))
                 continue;
-            return comps[1].Substring(comps[1].IndexOf('=') + 1);
+            return (escola, Val(comps[1]));
         }
         return null;
     }

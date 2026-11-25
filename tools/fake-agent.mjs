@@ -2,7 +2,7 @@
 // Uso: NODE_TLS_REJECT_UNAUTHORIZED=0 node fake-agent.mjs wss://localhost:8443/ws/agent <EnrollmentKey> <nome> [sala] [imagem.jpg]
 import { readFileSync } from "node:fs";
 
-const [url, key, name = "SALA1-PC01", room = "SALA1", imgPath] = process.argv.slice(2);
+const [url, key, name = "SALA1-PC01", room = "SALA1", imgPath, school = ""] = process.argv.slice(2);
 if (!url || !key) { console.error("uso: node fake-agent.mjs <url> <key> [nome] [sala] [imagem.jpg]"); process.exit(1); }
 
 // JPEG 1x1 cinzento, caso não seja dada imagem
@@ -14,7 +14,7 @@ const ws = new WebSocket(url);
 ws.binaryType = "arraybuffer";
 let streamTimer = null;
 ws.onopen = () => {
-  ws.send(JSON.stringify({ type: "hello", key, id: name, hostname: name, room, user: "ESCOLA\\aluno." + name.toLowerCase(), os: "Simulado", version: "0.0.0" }));
+  ws.send(JSON.stringify({ type: "hello", key, id: name, hostname: name, room, school, user: "ESCOLA\\aluno." + name.toLowerCase(), os: "Simulado", version: "0.0.0" }));
   setInterval(() => ws.send(frame(0x01)), 2000);
   ws.send(frame(0x01));
 };
@@ -23,6 +23,7 @@ ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
   if (m.type !== "input" || m.ev !== "move") console.log(`[${name}]`, JSON.stringify(m));
   if (m.type === "message" && m.allowReply) setTimeout(() => ws.send(JSON.stringify({ type: "reply", msgId: m.id, text: "Recebido, professor!" })), 500);
+  if (m.type === "procs") ws.send(JSON.stringify({ type: "procs", list: [{ pid: 101, name: "chrome", title: "YouTube - Google Chrome" }, { pid: 202, name: "WINWORD", title: "Trabalho.docx - Word" }] }));
   if (m.type === "stream") {
     clearInterval(streamTimer);
     if (m.on) streamTimer = setInterval(() => ws.send(frame(0x02)), 1000 / m.fps);

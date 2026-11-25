@@ -6,7 +6,11 @@ using System.Text.Json.Nodes;
 
 namespace ClassroomServer;
 
-public sealed record TeacherSession(string Token, string Username, List<string> Rooms, DateTimeOffset Expires);
+/// <summary>Sessão de consola. Aponta para a conta viva: mudanças de salas/admin aplicam-se logo.</summary>
+public sealed record TeacherSession(string Token, TeacherAccount Account, DateTimeOffset Expires)
+{
+    public string Username => Account.Username;
+}
 
 /// <summary>
 /// Protocolo binário (1.º byte = tipo):
@@ -25,7 +29,7 @@ public sealed class Hub
     private static readonly HashSet<string> BroadcastActions = new()
     {
         "lock", "unlock", "message", "openUrl", "logoff", "reboot", "shutdown",
-        "broadcastStart", "broadcastStop", "watch", "unwatch", "input",
+        "broadcastStart", "broadcastStop", "watch", "unwatch", "input", "procs", "kill", "type",
     };
 
     private readonly ServerConfig _cfg;
@@ -38,8 +42,12 @@ public sealed class Hub
     private readonly HashSet<string> _lockedIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, TeacherSession> _sessions = new();
 
-    public Hub(ServerConfig cfg, Audit audit, ILogger<Hub> log)
+    private readonly RoomCatalog _catalog;
+
+    public Hub(ServerConfig cfg, Audit audit, ILogger<Hub> log, RoomCatalog catalog)
     {
+        _catalog = catalog;
+        _catalog.Changed += OnCatalogChanged;
         _cfg = cfg;
         _audit = audit;
         _log = log;
@@ -54,8 +62,7 @@ public sealed class Hub
         // compara sempre algo, para não revelar por tempo de resposta se o utilizador existe
         var ok = PasswordHasher.Verify(password, acc?.PasswordHash ?? PasswordHasher.Hash("x")) && acc != null;
         if (!ok) return null;
-        var s = new TeacherSession(ServerConfig.RandomToken(32), acc!.Username, acc.Rooms,
-            DateTimeOffset.UtcNow.AddHours(_cfg.SessionHours));
+        var s = new TeacherSession(ServerConfig.RandomToken(32), acc!, DateTimeOffset.UtcNow.AddHours(_cfg.SessionHours));
         _sessions[s.Token] = s;
         return s;
     }
@@ -63,7 +70,7 @@ public sealed class Hub
     public TeacherSession? ValidateToken(string? token)
     {
         if (token == null || !_sessions.TryGetValue(token, out var s)) return null;
-        if (s.Expires < DateTimeOffset.UtcNow)
+        if (s.Expires < DateTimeOffset.UtcNow || !_cfg.Teachers.Contains(s.Account))
         {
             _sessions.TryRemove(token, out _);
             return null;
@@ -72,6 +79,113 @@ public sealed class Hub
     }
 
     public void Logout(string token) => _sessions.TryRemove(token, out _);
+
+    // ---------------------------------------------------------------- utilizadores (gestão na consola)
+
+    public object[] ListUsers()
+    {
+        lock (_cfg)
+            return _cfg.Teachers.OrderBy(t => t.Username, StringComparer.OrdinalIgnoreCase).Select(t => (object)new
+            {
+                username = t.Username,
+                displayName = t.DisplayName,
+                isAdmin = t.IsAdmin,
+                rooms = t.Rooms,
+            }).ToArray();
+    }
+
+    /// <summary>Cria ou altera uma conta. Devolve uma mensagem de erro, ou null se correu bem.</summary>
+    public string? SaveUser(string by, string username, string? displayName, string? password, bool? isAdmin, List<string>? rooms, bool create)
+    {
+        username = (username ?? "").Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(username, @"^[\w.\-@]{2,64}$"))
+            return "Nome de utilizador inválido (2-64 letras, números, . - _ @).";
+        if (password != null && password.Length > 0 && password.Length < 8)
+            return "A palavra-passe tem de ter pelo menos 8 caracteres.";
+        lock (_cfg)
+        {
+            var acc = _cfg.Teachers.FirstOrDefault(t => t.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+            if (create)
+            {
+                if (acc != null) return "Esse utilizador já existe.";
+                if (string.IsNullOrEmpty(password)) return "Indica uma palavra-passe.";
+                acc = new TeacherAccount { Username = username };
+                _cfg.Teachers.Add(acc);
+            }
+            else if (acc == null) return "Utilizador não encontrado.";
+
+            if (isAdmin == false && acc.IsAdmin && _cfg.Teachers.Count(t => t.IsAdmin) <= 1)
+                return "Tem de existir pelo menos um administrador.";
+            if (displayName != null) acc.DisplayName = displayName.Trim();
+            if (!string.IsNullOrEmpty(password)) acc.PasswordHash = PasswordHasher.Hash(password);
+            if (isAdmin != null) acc.IsAdmin = isAdmin.Value;
+            if (rooms != null) acc.Rooms = rooms.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).Distinct().ToList();
+            _cfg.Save();
+        }
+        _audit.Write(by, create ? "utilizador-criado" : "utilizador-alterado", username);
+        Reconnect(username); // a consola dessa pessoa volta a carregar a lista de PCs com as salas novas
+        return null;
+    }
+
+    public string? DeleteUser(string by, string username)
+    {
+        lock (_cfg)
+        {
+            var acc = _cfg.Teachers.FirstOrDefault(t => t.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+            if (acc == null) return "Utilizador não encontrado.";
+            if (acc.Username.Equals(by, StringComparison.OrdinalIgnoreCase)) return "Não podes apagar a tua própria conta.";
+            if (acc.IsAdmin && _cfg.Teachers.Count(t => t.IsAdmin) <= 1) return "Tem de existir pelo menos um administrador.";
+            _cfg.Teachers.Remove(acc);
+            _cfg.Save();
+        }
+        foreach (var k in _sessions.Where(kv => kv.Value.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList())
+            _sessions.TryRemove(k, out _);
+        _audit.Write(by, "utilizador-apagado", username);
+        Reconnect(username);
+        return null;
+    }
+
+    public string? ChangeOwnPassword(TeacherSession s, string current, string next)
+    {
+        if (!PasswordHasher.Verify(current, s.Account.PasswordHash)) return "A palavra-passe atual está errada.";
+        if (next.Length < 8) return "A palavra-passe nova tem de ter pelo menos 8 caracteres.";
+        lock (_cfg)
+        {
+            s.Account.PasswordHash = PasswordHasher.Hash(next);
+            _cfg.Save();
+        }
+        _audit.Write(s.Username, "palavra-passe-alterada", "");
+        return null;
+    }
+
+    /// <summary>Nomes de salas mudaram: atualiza a sala de cada PC ligado e as consolas.</summary>
+    private void OnCatalogChanged()
+    {
+        foreach (var a in SnapshotAgents())
+        {
+            var room = _catalog.Resolve(a.School, a.Folder);
+            a.SchoolName = _catalog.SchoolName(a.School);
+            if (room == a.Room) continue;
+            a.Room = room;
+            BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
+        }
+        List<TeacherConnection> list;
+        lock (_gate) list = _teachers.Values.ToList();
+        foreach (var t in list) t.SendJson(new { type = "catalogChanged" });
+        RefreshThumbs();
+    }
+
+    public object CatalogFor(TeacherSession s) =>
+        _catalog.Snapshot((school, room) => s.Account.CanSee(school, room),
+            SnapshotAgents().Select(a => (a.School, a.Room)));
+
+    private void Reconnect(string username)
+    {
+        List<TeacherConnection> list;
+        lock (_gate) list = _teachers.Values.Where(t => t.Username.Equals(username, StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var t in list) t.Abort();
+    }
+
 
     // ---------------------------------------------------------------- agentes (PCs dos alunos)
 
@@ -132,7 +246,10 @@ public sealed class Hub
         a.Id = Clean(n["id"]?.GetValue<string>(), 64);
         if (a.Id.Length == 0) return false;
         a.Hostname = Clean(n["hostname"]?.GetValue<string>(), 64);
-        a.Room = Clean(n["room"]?.GetValue<string>(), 64);
+        a.Folder = Clean(n["room"]?.GetValue<string>(), 64);
+        a.School = Clean(n["school"]?.GetValue<string>(), 32);
+        a.Room = _catalog.Resolve(a.School, a.Folder);
+        a.SchoolName = _catalog.SchoolName(a.School);
         a.User = Clean(n["user"]?.GetValue<string>(), 128);
         a.Os = Clean(n["os"]?.GetValue<string>(), 128);
         a.Version = Clean(n["version"]?.GetValue<string>(), 32);
@@ -201,6 +318,10 @@ public sealed class Hub
                 });
                 break;
             case "pong":
+                break;
+            case "procs":
+                // lista de programas abertos pedida por uma consola
+                BroadcastToTeachers(a, new { type = "procs", id = a.Id, list = n["list"]?.DeepClone() });
                 break;
         }
     }
@@ -349,6 +470,20 @@ public sealed class Hub
 
             case "unwatch":
                 foreach (var a in targets) StopWatching(t, a);
+                break;
+
+            case "procs":
+                targets[0].SendJson(new { type = "procs" });
+                break;
+
+            case "kill":
+                var pid = n["pid"]?.GetValue<int>() ?? 0;
+                if (pid > 0) targets[0].SendJson(new { type = "kill", pid });
+                break;
+
+            case "type":
+                var txt = Clean(n["text"]?.GetValue<string>(), 2000, allowNewlines: true);
+                if (txt.Length > 0) foreach (var a in targets) a.SendJson(new { type = "type", text = txt });
                 break;
 
             case "input":
