@@ -20,7 +20,8 @@ $cred = Get-Credential $Conta
 if (-not $cred) { throw 'Cancelado.' }
 $pw = $cred.GetNetworkCredential().Password
 $tr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script`""
-schtasks.exe /create /tn SalaVivaInstalar /ru $cred.UserName /rp $pw /sc once /st 00:00 /rl HIGHEST /tr $tr /f
+$ErrorActionPreference = 'Continue'   # o aviso "/ST é anterior" vai para stderr e não é erro
+schtasks.exe /create /tn SalaVivaInstalar /ru $cred.UserName /rp $pw /sc once /st 00:00 /rl HIGHEST /tr $tr /f 2>&1 | Where-Object { "$_" -notmatch '/ST' } | ForEach-Object { "$_" }
 $pw = $null
 if ($LASTEXITCODE -ne 0) { throw "Não foi possível criar a tarefa." }
 Write-Host ''
