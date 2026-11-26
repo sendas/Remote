@@ -348,7 +348,7 @@ internal sealed class AgentApp : ApplicationContext
             if (File.Exists(stamp) && DateTime.UtcNow - File.GetLastWriteTimeUtc(stamp) < TimeSpan.FromHours(6)) return;
             File.WriteAllText(stamp, DateTime.Now.ToString("s"));
             Log.Write("A atualizar a partir de " + path);
-            Process.Start(new ProcessStartInfo(path, "--instalar") { UseShellExecute = false, CreateNoWindow = true });
+            Process.Start(new ProcessStartInfo(path, "--atualizar") { UseShellExecute = false, CreateNoWindow = true });
         }
         catch (Exception ex) { Log.Write("Atualização: " + ex.Message); }
     }

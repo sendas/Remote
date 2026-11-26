@@ -14,6 +14,8 @@ internal static class Program
 
         if (mode == "--instalar")
             return Installer.Run();
+        if (mode == "--atualizar")
+            return Installer.Run(update: true);
 
         if (mode == "--session" || mode == "--console")
         {

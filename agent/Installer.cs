@@ -35,7 +35,9 @@ internal static class Installer
 
     private static string LogPath => Path.Combine(AgentConfig.Dir, "instalar.log");
 
-    public static int Run()
+    /// <param name="update">Atualização pedida pelo servidor a um agente já instalado: mantém a sala
+    /// que o PC já tem (não volta a procurar o MAC nem exige que a sala esteja ativa).</param>
+    public static int Run(bool update = false)
     {
         try
         {
@@ -45,24 +47,39 @@ internal static class Installer
                 .FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("instalar.json não encontrado junto de " + src);
             var cfg = LoadConfig(cfgFile);
 
+            // agente já instalado neste PC (ex.: instalado à mão ou atualização pedida pelo servidor)?
+            AgentConfig? atual = null;
+            if (File.Exists(AgentConfig.FilePath) && File.Exists(Path.Combine(Target, "ClassroomAgent.exe")))
+                try { atual = AgentConfig.Load(); } catch { }
+
             var macs = LocalMacs();
-            var found = FindRoom(cfg, macs);
-            if (found == null)
+            var ativas = cfg.Salas.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+            bool Ativa(string e, string p) => ativas.Count == 0 || ativas.Contains("*") ||
+                ativas.Contains(e + "/" + p, StringComparer.OrdinalIgnoreCase) ||
+                ativas.Contains(p, StringComparer.OrdinalIgnoreCase);
+
+            string escola, pasta;
+            var found = update ? null : FindRoom(cfg, macs);
+            if (found != null && Ativa(found.Value.School, found.Value.Folder))
+                (escola, pasta) = found.Value;
+            else if (atual != null)
+            {
+                // já tem o agente: atualiza no sítio e mantém a sala que tinha
+                escola = atual.School ?? "";
+                pasta = atual.Room ?? "";
+            }
+            else if (found == null)
             {
                 Write($"Sem sala: nenhum MAC deste PC ({string.Join(", ", macs)}) está nas salas de {cfg.PastaSalas}. Nada a fazer.");
                 return 0;
             }
-            var (escola, pasta) = found.Value;
-            // o nome mostrado na consola é decidido no servidor (Escolas e salas); aqui guarda-se a pasta do AD
-            var sala = pasta;
-            var ativas = cfg.Salas.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-            if (ativas.Count > 0 && !ativas.Contains("*") &&
-                !ativas.Contains(escola + "/" + pasta, StringComparer.OrdinalIgnoreCase) &&
-                !ativas.Contains(pasta, StringComparer.OrdinalIgnoreCase))
+            else
             {
-                Write($"Sala '{escola}/{pasta}' não está ativa (ativa-a na consola: Escolas e salas). Nada a fazer.");
+                Write($"Sala '{found.Value.School}/{found.Value.Folder}' não está ativa (ativa-a na consola: Escolas e salas). Nada a fazer.");
                 return 0;
             }
+            // o nome mostrado na consola é decidido no servidor (Escolas e salas); aqui guarda-se a pasta do AD
+            var sala = pasta;
 
             var agentJson = JsonSerializer.Serialize(new AgentConfig
             {
