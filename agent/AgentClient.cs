@@ -175,6 +175,7 @@ internal sealed class AgentClient
                     if (ThumbsOn) _lastThumbHash = null; // envia logo uma miniatura atualizada
                     break;
                 case "stream":
+                    _lastFullHash = null; // envia logo uma imagem
                     FullFps = (n["on"]?.GetValue<bool>() ?? false) ? CompatMath.Clamp(n["fps"]?.GetValue<int>() ?? 5, 1, 15) : 0;
                     Command?.Invoke(n);
                     break;
@@ -243,6 +244,8 @@ internal sealed class AgentClient
     }
 
     private byte[]? _lastThumbHash;
+    private byte[]? _lastFullHash;
+    private long _lastFullSent;
 
     private void CaptureLoop()
     {
@@ -257,8 +260,15 @@ internal sealed class AgentClient
                 var now = CompatMath.Ticks;
                 if (FullFps > 0)
                 {
-                    var jpeg = ScreenCapture.Capture(1600, 60, out _);
-                    if (jpeg != null) TrySendFrame(Full, jpeg);
+                    // ecrã em grande: só envia quando a imagem muda (ou a cada 3 s), para não entupir a rede
+                    var jpeg = ScreenCapture.Capture(1366, 55, out var fhash);
+                    var fsame = fhash != null && _lastFullHash != null && fhash.SequenceEqual(_lastFullHash);
+                    if (jpeg != null && (!fsame || now - _lastFullSent > 3000))
+                    {
+                        TrySendFrame(Full, jpeg);
+                        _lastFullHash = fhash;
+                        _lastFullSent = now;
+                    }
                     var wait = 1000 / FullFps - (int)(CompatMath.Ticks - now);
                     if (wait > 0) Thread.Sleep(wait);
                 }
