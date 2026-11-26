@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Drawing;
 using System.Security.Principal;
 using System.Windows.Forms;
@@ -20,6 +20,7 @@ internal sealed class SetupForm : Form
     private readonly RadioButton _rPc = new() { Text = "Nome do computador (" + Environment.MachineName + ")", AutoSize = true };
     private readonly RadioButton _rCustom = new() { Text = "Outro nome:", AutoSize = true };
     private readonly TextBox _custom = new() { Width = 220, Enabled = false };
+    private readonly CheckBox _hide = new() { Text = "PC partilhado: só aparece na consola quando é um aluno a usá-lo\n(quando é um professor a usá-lo, fica escondido)", AutoSize = true };
     private readonly Button _go = new() { Text = "Instalar neste computador", AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(460, 0) };
 
@@ -56,6 +57,8 @@ internal sealed class SetupForm : Form
         flow.Controls.Add(names);
         _rCustom.CheckedChanged += (_, _) => { _custom.Enabled = _rCustom.Checked; if (_rCustom.Checked) _custom.Focus(); };
 
+        _hide.Margin = new Padding(0, 10, 0, 0);
+        flow.Controls.Add(_hide);
         flow.Controls.Add(_go);
         _go.Margin = new Padding(0, 14, 0, 0);
         flow.Controls.Add(_status);
@@ -87,6 +90,7 @@ internal sealed class SetupForm : Form
             _room.Text = atual.Room;
             (atual.NameMode switch { "login" => _rLogin, "pc" => _rPc, "custom" => _rCustom, _ => _rUser }).Checked = true;
             _custom.Text = atual.CustomName;
+            _hide.Checked = atual.HideForTeachers;
             _status.Text = "Este PC já tem o agente (sala " + atual.Room + "). Instalar outra vez atualiza-o.";
         }
         else if (Installer.SuggestRoom(_cfg) is { } sug)
@@ -123,6 +127,7 @@ internal sealed class SetupForm : Form
             Room = _room.Text.Trim(),
             NameMode = _rLogin.Checked ? "login" : _rPc.Checked ? "pc" : _rCustom.Checked ? "custom" : "user",
             CustomName = _rCustom.Checked ? _custom.Text.Trim() : "",
+            HideForTeachers = _hide.Checked,
         };
         _go.Enabled = false;
         _status.ForeColor = SystemColors.ControlText;

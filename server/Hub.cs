@@ -404,6 +404,8 @@ public sealed partial class Hub
         a.SchoolName = _catalog.SchoolName(a.School);
         a.User = Clean(n["user"]?.GetValue<string>(), 128);
         a.NameMode = Clean(n["nameMode"]?.GetValue<string>(), 16);
+        a.HideForTeachers = n["hideForTeachers"]?.GetValue<bool>() ?? false;
+        a.HiddenNow = ShouldHide(a);
         a.CustomLabel = Clean(n["label"]?.GetValue<string>(), 80);
         a.Os = Clean(n["os"]?.GetValue<string>(), 128);
         a.Version = Clean(n["version"]?.GetValue<string>(), 32);
@@ -475,11 +477,33 @@ public sealed partial class Hub
         switch (n?["type"]?.GetValue<string>())
         {
             case "status":
+            {
+                var wasHidden = a.HiddenNow;
                 a.User = Clean(n["user"]?.GetValue<string>(), 128);
                 a.FullUserName = "";
-                BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
+                a.HiddenNow = ShouldHide(a);
+                if (a.HiddenNow && !wasHidden)
+                {
+                    // passou a ser um professor a usar o PC partilhado: desaparece já de todas as consolas
+                    List<TeacherConnection> all;
+                    lock (_gate) all = _teachers.Values.ToList();
+                    foreach (var t in all)
+                    {
+                        StopWatching(t, a);
+                        if (t.Session.Account.CanSee(a.School, a.Room)) t.SendJson(new { type = "agentLeft", id = a.Id });
+                    }
+                    RefreshThumbs(a);
+                    break;
+                }
+                if (!a.HiddenNow && wasHidden)
+                {
+                    BroadcastToTeachers(a, new { type = "agentJoined", agent = a.Describe() });
+                    RefreshThumbs(a);
+                }
+                else BroadcastToTeachers(a, new { type = "agentUpdate", agent = a.Describe() });
                 ResolveName(a);
                 break;
+            }
             case "collectStart":
             case "collectEnd":
                 HandleCollectJson(a, n, n["type"]!.GetValue<string>());
@@ -835,6 +859,17 @@ public sealed partial class Hub
             return _teachers.Values
                 .Where(t => t.MayControl(a) && (!watchersOnly || a.Watchers.Contains(t.ConnId)))
                 .ToList();
+    }
+
+    /// <summary>PC partilhado com sessão de alguém que não é aluno (ex.: professor) → escondido.</summary>
+    private bool ShouldHide(AgentConnection a)
+    {
+        if (!a.HideForTeachers || string.IsNullOrWhiteSpace(a.User)) return false;
+        var u = a.User;
+        if (u.Contains('\\')) u = u[(u.LastIndexOf('\\') + 1)..];
+        if (u.Contains('@')) u = u[..u.IndexOf('@')];
+        try { return !System.Text.RegularExpressions.Regex.IsMatch(u, _cfg.StudentLoginPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase); }
+        catch { return false; }
     }
 
     private void BroadcastToTeachers(AgentConnection a, object msg)

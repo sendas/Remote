@@ -112,6 +112,7 @@ internal sealed class AgentClient
                     macs = Installer.LocalMacs(), // o servidor usa-os para saber que PC é qual dentro da sala
                     exeSha = OwnSha,
                     nameMode = _cfg.NameMode,
+                    hideForTeachers = _cfg.HideForTeachers,
                     label = _cfg.NameMode == "custom" ? _cfg.CustomName : "",
                     user = _currentUser(),
                     os = Environment.OSVersion.VersionString,

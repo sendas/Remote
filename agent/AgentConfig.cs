@@ -19,6 +19,8 @@ public sealed class AgentConfig
     public string CustomName { get; set; } = "";
     /// <summary>Sala escolhida à mão no assistente de instalação: a GPO não a muda.</summary>
     public bool ManualRoom { get; set; }
+    /// <summary>PC partilhado: só aparece na consola quando é um aluno a usá-lo (não quando é um professor).</summary>
+    public bool HideForTeachers { get; set; }
     /// <summary>Mostra um aviso no ecrã do aluno quando o professor abre o seu ecrã em grande (transparência/RGPD).</summary>
     public bool ShowViewIndicator { get; set; } = true;
 

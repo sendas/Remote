@@ -35,6 +35,7 @@ public sealed class ManualInstall
     public string Room { get; set; } = "";
     public string NameMode { get; set; } = "user";
     public string CustomName { get; set; } = "";
+    public bool HideForTeachers { get; set; }
 }
 
 internal static class Installer
@@ -127,6 +128,7 @@ internal static class Installer
                 NameMode = manual?.NameMode ?? atual?.NameMode ?? "user",
                 CustomName = manual?.CustomName ?? atual?.CustomName ?? "",
                 ManualRoom = manual != null || (atual?.ManualRoom == true && found == null),
+                HideForTeachers = manual?.HideForTeachers ?? atual?.HideForTeachers ?? false,
                 ShowViewIndicator = cfg.ShowViewIndicator,
                 ShowTrayIcon = cfg.ShowTrayIcon,
             }, new JsonSerializerOptions { WriteIndented = true });

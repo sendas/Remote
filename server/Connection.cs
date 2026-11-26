@@ -142,6 +142,10 @@ public sealed class AgentConnection : Connection
     /// <summary>Como o PC quer ser identificado na consola (escolhido no assistente de instalação).</summary>
     public string NameMode { get; set; } = "";
     public string CustomLabel { get; set; } = "";
+    /// <summary>PC partilhado: escondido da consola enquanto um professor o está a usar.</summary>
+    public bool HideForTeachers { get; set; }
+    /// <summary>Calculado pelo hub quando muda o utilizador: true = não aparece a ninguém.</summary>
+    public bool HiddenNow { get; set; }
 
     /// <summary>Nome a mostrar no cartão, conforme NameMode; vazio = o habitual (nome completo do aluno).</summary>
     public string Label => NameMode switch
@@ -243,5 +247,5 @@ public sealed class TeacherConnection : Connection
         return true;
     }
 
-    public bool MayControl(AgentConnection a) => Session.Account.CanSee(a.School, a.Room);
+    public bool MayControl(AgentConnection a) => !a.HiddenNow && Session.Account.CanSee(a.School, a.Room);
 }

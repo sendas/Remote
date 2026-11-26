@@ -38,6 +38,9 @@ public sealed class ServerConfig
     public string DeployDir { get; set; } = @"C:\Deploy\SalaDeAula";
     /// <summary>Nome da partilha de DeployDir (os PCs atualizam-se a partir de \\SERVIDOR\&lt;partilha&gt;\leve).</summary>
     public string DeployShare { get; set; } = "SalaDeAula$";
+    /// <summary>Nome de início de sessão dos alunos (sem domínio), ex.: a9999. Usado nos PCs partilhados
+    /// ("só aparece quando é um aluno"): quem não corresponde conta como professor.</summary>
+    public string StudentLoginPattern { get; set; } = @"^a\d+$";
     /// <summary>Chave partilhada que os agentes dos alunos têm de apresentar.</summary>
     public string EnrollmentKey { get; set; } = "";
     public List<TeacherAccount> Teachers { get; set; } = new();
