@@ -13,6 +13,12 @@ public sealed class AgentConfig
     public string Room { get; set; } = "";
     /// <summary>Escola (pasta do AD, ex.: EBVG). O nome da sala na consola é decidido no servidor.</summary>
     public string School { get; set; } = "";
+    /// <summary>Nome mostrado na consola: "user" (nome completo no AD), "login" (nome de início de sessão),
+    /// "pc" (nome do computador) ou "custom" (CustomName).</summary>
+    public string NameMode { get; set; } = "user";
+    public string CustomName { get; set; } = "";
+    /// <summary>Sala escolhida à mão no assistente de instalação: a GPO não a muda.</summary>
+    public bool ManualRoom { get; set; }
     /// <summary>Mostra um aviso no ecrã do aluno quando o professor abre o seu ecrã em grande (transparência/RGPD).</summary>
     public bool ShowViewIndicator { get; set; } = true;
 

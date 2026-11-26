@@ -139,6 +139,18 @@ public sealed class AgentConnection : Connection
     public string User { get; set; } = "";
     /// <summary>Nome completo de quem tem sessão (displayName do AD).</summary>
     public string FullUserName { get; set; } = "";
+    /// <summary>Como o PC quer ser identificado na consola (escolhido no assistente de instalação).</summary>
+    public string NameMode { get; set; } = "";
+    public string CustomLabel { get; set; } = "";
+
+    /// <summary>Nome a mostrar no cartão, conforme NameMode; vazio = o habitual (nome completo do aluno).</summary>
+    public string Label => NameMode switch
+    {
+        "custom" => CustomLabel,
+        "pc" => Hostname,
+        "login" => User.Contains('\\') ? User[(User.LastIndexOf('\\') + 1)..] : User,
+        _ => "",
+    };
     public string Os { get; set; } = "";
     public string Version { get; set; } = "";
     public bool Outdated { get; set; }
@@ -184,6 +196,7 @@ public sealed class AgentConnection : Connection
         key = Key,
         user = User,
         userName = FullUserName,
+        label = Label,
         os = Os,
         version = Version,
         outdated = Outdated,

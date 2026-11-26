@@ -28,8 +28,38 @@ public sealed class InstallConfig
 /// ou lançado à distância). Descobre a sala do PC pelo endereço MAC no AD e instala/atualiza o agente.
 /// Num PC que não pertença a nenhuma sala ativa, não faz nada.
 /// </summary>
+/// <summary>Escolhas feitas no assistente de instalação (instalação manual num PC).</summary>
+public sealed class ManualInstall
+{
+    public string School { get; set; } = "";
+    public string Room { get; set; } = "";
+    public string NameMode { get; set; } = "user";
+    public string CustomName { get; set; } = "";
+}
+
 internal static class Installer
 {
+    /// <summary>Última mensagem escrita (para o assistente mostrar o resultado).</summary>
+    public static string LastMessage { get; private set; } = "";
+
+    /// <summary>Lê o instalar.json junto do programa (para o assistente sugerir as salas).</summary>
+    public static InstallConfig? TryLoadConfig()
+    {
+        try
+        {
+            var src = Path.GetDirectoryName(Compat.ExePath)!;
+            var f = new[] { Path.Combine(src, "..", "instalar.json"), Path.Combine(src, "instalar.json") }.FirstOrDefault(File.Exists);
+            return f == null ? null : LoadConfig(f);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Sala encontrada pelo MAC deste PC no AD (ou null).</summary>
+    public static (string School, string Folder)? SuggestRoom(InstallConfig cfg)
+    {
+        try { return FindRoom(cfg, LocalMacs()); } catch { return null; }
+    }
+
     private static readonly string Target = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ClassroomAgent");
 
@@ -37,7 +67,7 @@ internal static class Installer
 
     /// <param name="update">Atualização pedida pelo servidor a um agente já instalado: mantém a sala
     /// que o PC já tem (não volta a procurar o MAC nem exige que a sala esteja ativa).</param>
-    public static int Run(bool update = false)
+    public static int Run(bool update = false, ManualInstall? manual = null)
     {
         try
         {
@@ -59,8 +89,14 @@ internal static class Installer
                 ativas.Contains(p, StringComparer.OrdinalIgnoreCase);
 
             string escola, pasta;
-            var found = update ? null : FindRoom(cfg, macs);
-            if (found != null && Ativa(found.Value.School, found.Value.Folder))
+            var found = update || manual != null || atual?.ManualRoom == true ? null : FindRoom(cfg, macs);
+            if (manual != null)
+            {
+                // instalação manual (assistente): instala sempre, na sala escolhida
+                escola = manual.School.Trim();
+                pasta = manual.Room.Trim();
+            }
+            else if (found != null && Ativa(found.Value.School, found.Value.Folder))
                 (escola, pasta) = found.Value;
             else if (atual != null)
             {
@@ -88,6 +124,9 @@ internal static class Installer
                 CertificatePin = cfg.CertificatePin,
                 Room = sala,
                 School = escola,
+                NameMode = manual?.NameMode ?? atual?.NameMode ?? "user",
+                CustomName = manual?.CustomName ?? atual?.CustomName ?? "",
+                ManualRoom = manual != null || (atual?.ManualRoom == true && found == null),
                 ShowViewIndicator = cfg.ShowViewIndicator,
                 ShowTrayIcon = cfg.ShowTrayIcon,
             }, new JsonSerializerOptions { WriteIndented = true });
@@ -254,6 +293,7 @@ internal static class Installer
 
     private static void Write(string msg)
     {
+        LastMessage = msg;
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}";
         try { File.AppendAllText(LogPath, line); }
         catch { }

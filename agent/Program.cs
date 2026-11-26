@@ -41,10 +41,7 @@ internal static class Program
             return 0;
         }
 
-        MessageBox.Show(
-            "Este programa é instalado como serviço pelo script install-agent.ps1.\n\n" +
-            "Para testar sem instalar: ClassroomAgent.exe --console",
-            "Sala de Aula — agente", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        return 1;
+        // duplo clique no programa: assistente de instalação neste PC
+        return SetupForm.Run();
     }
 }

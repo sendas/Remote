@@ -274,7 +274,7 @@
       else if ((info.key || `${info.school || ""}/${info.room}`) !== f) return false;
     }
     if (state.search) {
-      const hay = `${info.hostname} ${info.user} ${info.userName || ""} ${info.id} ${info.room}`.toLowerCase();
+      const hay = `${info.hostname} ${info.user} ${info.userName || ""} ${info.label || ""} ${info.id} ${info.room}`.toLowerCase();
       if (!hay.includes(state.search)) return false;
     }
     return true;
@@ -282,6 +282,7 @@
 
   /** Nome de quem tem sessão: nome completo do AD; senão a conta sem domínio; senão "sem sessão". */
   function personName(info) {
+    if (info.label) return info.label;
     if (info.userName) return info.userName;
     if (info.user) return info.user.split("\\").pop();
     return "— sem sessão —";

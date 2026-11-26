@@ -403,6 +403,8 @@ public sealed partial class Hub
         a.Room = _catalog.Resolve(a.School, a.Folder);
         a.SchoolName = _catalog.SchoolName(a.School);
         a.User = Clean(n["user"]?.GetValue<string>(), 128);
+        a.NameMode = Clean(n["nameMode"]?.GetValue<string>(), 16);
+        a.CustomLabel = Clean(n["label"]?.GetValue<string>(), 80);
         a.Os = Clean(n["os"]?.GetValue<string>(), 128);
         a.Version = Clean(n["version"]?.GetValue<string>(), 32);
         a.IdBytes = Encoding.UTF8.GetBytes(a.Id);
