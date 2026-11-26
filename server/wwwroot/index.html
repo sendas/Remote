@@ -33,7 +33,7 @@
     <input id="search" type="search" placeholder="Procurar PC ou aluno…" aria-label="Procurar">
     <span id="counts" class="counts"></span>
     <span class="spacer"></span>
-    <label class="mini" title="Tamanho das miniaturas">🔍 <input id="zoom" type="range" min="160" max="420" value="240"></label>
+    <label class="mini" title="Tamanho das miniaturas">🔍 <input id="zoom" type="range" min="160" max="900" value="240"></label>
     <select id="netMode" class="mini-select" title="Rede: em hotspot, reduz os dados recebidos">
       <option value="0">Rede normal</option>
       <option value="10000">Poupança (hotspot)</option>
@@ -89,6 +89,11 @@
         <button data-cmd="shutdown" data-needs-sel class="danger">⏻ Desligar</button>
       </div>
     </div>
+    <span class="zoom-btns" title="Tamanho das miniaturas">🔍
+      <button type="button" data-zoom="240">1×</button>
+      <button type="button" data-zoom="480">2×</button>
+      <button type="button" data-zoom="720">3×</button>
+    </span>
   </div>
 
   <main class="main">

@@ -168,6 +168,8 @@ public sealed class AgentConnection : Connection
 
     /// <summary>Se o agente deve enviar miniaturas (só quando algum professor está a ver a sala dele).</summary>
     public bool? ThumbsOn { get; set; }
+    /// <summary>Largura das miniaturas pedida a este PC (0 = a do "welcome").</summary>
+    public int ThumbWidthSent { get; set; }
 
     /// <summary>Cabeçalho binário pré-calculado para reencaminhar imagens deste agente aos professores.</summary>
     public byte[] IdBytes { get; set; } = Array.Empty<byte>();
@@ -204,6 +206,8 @@ public sealed class TeacherConnection : Connection
 
     /// <summary>Intervalo mínimo entre miniaturas do mesmo PC (modo poupança/hotspot). 0 = todas.</summary>
     public int ThumbMinIntervalMs { get; set; }
+    /// <summary>Tamanho das miniaturas escolhido na consola: 1, 2 ou 3 vezes.</summary>
+    public int ThumbScale { get; set; } = 1;
 
     /// <summary>Sala que a consola está a mostrar (null = todas). Só recebe miniaturas dessa sala.</summary>
     public string? RoomFilter { get; set; }

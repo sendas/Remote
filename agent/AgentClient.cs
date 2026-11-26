@@ -67,9 +67,9 @@ internal sealed class AgentClient
                     pipe = new NamedPipeClientStream(u.Host, u.AbsolutePath.Trim('/'), PipeDirection.InOut, PipeOptions.Asynchronous);
                     await pipe.ConnectAsync(10000);
 #if NET
-                    ws = WebSocket.CreateFromStream(pipe, isServer: false, subProtocol: null, keepAliveInterval: TimeSpan.FromSeconds(20));
+                    ws = WebSocket.CreateFromStream(new ChunkedStream(pipe), isServer: false, subProtocol: null, keepAliveInterval: TimeSpan.FromSeconds(20));
 #else
-                    ws = new MiniWebSocket(pipe);
+                    ws = new MiniWebSocket(new ChunkedStream(pipe));
 #endif
                 }
                 else
@@ -169,6 +169,10 @@ internal sealed class AgentClient
                     ThumbWidth = CompatMath.Clamp(n["thumbWidth"]?.GetValue<int>() ?? 360, 160, 800);
                     FailsafeUnlockMinutes = CompatMath.Clamp(n["failsafeUnlockMinutes"]?.GetValue<int>() ?? 10, 1, 1440);
                     _lastThumbHash = null; // envia logo uma miniatura
+                    break;
+                case "thumbSize":
+                    ThumbWidth = CompatMath.Clamp(n["width"]?.GetValue<int>() ?? 360, 160, 1280);
+                    _lastThumbHash = null; // envia logo uma miniatura no tamanho novo
                     break;
                 case "thumbs":
                     ThumbsOn = n["on"]?.GetValue<bool>() ?? true;

@@ -143,7 +143,7 @@
   const send = (o) => state.ws?.readyState === WebSocket.OPEN && state.ws.send(JSON.stringify(o));
   const cmd = (action, targets, extra = {}) => send({ type: "cmd", action, targets: [...targets], ...extra });
   function sendPrefs() {
-    send({ type: "prefs", thumbMinIntervalMs: parseInt($("#netMode").value, 10), room: state.filter || null });
+    send({ type: "prefs", thumbMinIntervalMs: parseInt($("#netMode").value, 10), room: state.filter || null, thumbScale: thumbScale() });
   }
   $("#netMode").addEventListener("change", sendPrefs);
 
@@ -241,8 +241,17 @@
   });
 
   $("#search").addEventListener("input", (e) => { state.search = e.target.value.trim().toLowerCase(); refresh(); });
-  $("#zoom").addEventListener("input", () => { store.set("zoom", $("#zoom").value); applyZoom(); });
+  // miniaturas maiores: o PC passa a enviar imagens com mais resolução (2x a partir de 400 px, 3x a partir de 640 px)
+  function thumbScale() { const z = +$("#zoom").value; return z >= 640 ? 3 : z >= 400 ? 2 : 1; }
+  let lastScale = 0;
+  $("#zoom").addEventListener("input", () => {
+    store.set("zoom", $("#zoom").value); applyZoom();
+    if (thumbScale() !== lastScale) { lastScale = thumbScale(); sendPrefs(); }
+  });
   function applyZoom() { $("#grid").style.setProperty("--tile", $("#zoom").value + "px"); }
+  for (const b of document.querySelectorAll("[data-zoom]")) b.addEventListener("click", () => {
+    $("#zoom").value = b.dataset.zoom; $("#zoom").dispatchEvent(new Event("input"));
+  });
 
   const PALETTE = ["#4f6bff", "#12a372", "#e5394f", "#ffad1f", "#6a3dff", "#00b8a3", "#ff5a6a", "#121826"];
   function buildSwatches() {

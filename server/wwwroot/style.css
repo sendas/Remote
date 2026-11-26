@@ -286,3 +286,6 @@ label.inline input { width: auto; }
 
 .viewer-stage:fullscreen { width: 100vw; height: 100vh; background: #000; }
 .viewer-stage:-webkit-full-screen { width: 100vw; height: 100vh; background: #000; }
+
+.zoom-btns { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.zoom-btns button { padding: 6px 10px; }

@@ -599,6 +599,7 @@ public sealed partial class Hub
         {
             // -1 = sem miniaturas, 0 = todas, >0 = no máximo uma por PC a cada N ms
             t.ThumbMinIntervalMs = Math.Clamp(n["thumbMinIntervalMs"]?.GetValue<int>() ?? 0, -1, 600_000);
+            t.ThumbScale = Math.Clamp(n["thumbScale"]?.GetValue<int>() ?? 1, 1, 3);
             var room = n["room"]?.GetValue<string>();
             t.RoomFilter = string.IsNullOrWhiteSpace(room) ? null : room;
             // envia já as últimas miniaturas da sala escolhida, para a grelha não ficar vazia
@@ -769,7 +770,16 @@ public sealed partial class Hub
         lock (_gate) teachers = _teachers.Values.ToList();
         foreach (var a in only != null ? new List<AgentConnection> { only } : SnapshotAgents())
         {
-            var on = teachers.Any(t => t.ViewsRoom(a));
+            var viewers = teachers.Where(t => t.ViewsRoom(a)).ToList();
+            var on = viewers.Count > 0;
+            // tamanho das miniaturas: o maior pedido pelos professores que estão a ver esta sala (1x, 2x ou 3x)
+            var scale = on ? viewers.Max(t => t.ThumbScale) : 1;
+            var width = Math.Clamp(_cfg.ThumbnailWidth * scale, 160, 1280);
+            if (a.ThumbWidthSent != width && (on || a.ThumbWidthSent != 0))
+            {
+                a.ThumbWidthSent = width;
+                a.SendJson(new { type = "thumbSize", width });
+            }
             if (a.ThumbsOn == on) continue;
             a.ThumbsOn = on;
             a.SendJson(new { type = "thumbs", on });

@@ -57,7 +57,7 @@ public sealed class PipeListener : BackgroundService
         catch { }
         try
         {
-            using var ws = WebSocket.CreateFromStream(pipe, isServer: true, subProtocol: null,
+            using var ws = WebSocket.CreateFromStream(new ChunkedStream(pipe), isServer: true, subProtocol: null,
                 keepAliveInterval: TimeSpan.FromSeconds(20));
             await _hub.RunAgent(ws, who);
         }
