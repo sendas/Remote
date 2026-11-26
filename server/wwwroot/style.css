@@ -289,3 +289,13 @@ label.inline input { width: auto; }
 
 .zoom-btns { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
 .zoom-btns button { padding: 6px 10px; }
+
+/* telemóvel / janela estreita: a página desliza normalmente (antes a grelha ficava com 4 px de altura) */
+.grid { grid-template-columns: repeat(auto-fill, minmax(min(var(--tile), 100%), 1fr)); }
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .console { display: block; height: auto; }
+  .main { display: block; }
+  .grid { overflow: visible; padding: 10px; gap: 10px; }
+  .side { border-left: 0; border-top: 1px solid var(--line); max-height: 70vh; }
+}
