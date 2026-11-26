@@ -17,6 +17,16 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory,
 });
 builder.Host.UseWindowsService(o => o.ServiceName = "ClassroomServer");
+// Como serviço: se ficou uma cópia antiga pendurada (a segurar a porta 8443), termina-a antes de arrancar.
+if (Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService())
+{
+    var me = Environment.ProcessId;
+    foreach (var p in System.Diagnostics.Process.GetProcessesByName("ClassroomServer"))
+    {
+        if (p.Id == me) continue;
+        try { p.Kill(true); p.WaitForExit(10000); } catch { }
+    }
+}
 var managedTls = cfg.TlsEngine.Equals("managed", StringComparison.OrdinalIgnoreCase) ||
                  (cfg.TlsEngine.Equals("auto", StringComparison.OrdinalIgnoreCase) &&
                   OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10));
@@ -308,9 +318,15 @@ app.Map("/ws/teacher", async (HttpContext ctx, Hub hub) =>
 });
 
 SystemApi.Map(app);
-app.Lifetime.ApplicationStopping.Register(() => app.Services.GetRequiredService<SeenStore>().Flush());
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    try { app.Services.GetRequiredService<SeenStore>().Flush(); } catch { }
+    // garantia: se alguma ligação ou tarefa não deixar o processo terminar, sai à força ao fim de 15 s
+    new Thread(() => { Thread.Sleep(15000); Environment.Exit(0); }) { IsBackground = true }.Start();
+});
 
 app.Run();
+Environment.Exit(0); // não deixar threads penduradas a segurar a porta
 return 0;
 
 internal sealed record LoginRequest(string Username, string Password);
