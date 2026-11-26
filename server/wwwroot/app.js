@@ -1049,6 +1049,10 @@
     renderReport(state.lastReport);
   });
   $("#sysRefresh").addEventListener("click", loadSystem);
+  $("#sysPen").addEventListener("click", () => {
+    toast("⏳ A preparar o pacote (cerca de 150 MB)…");
+    download("/api/admin/pen-package", "SalaViva-pen.zip");
+  });
   $("#sysUpdate").addEventListener("click", async (e) => {
     if (e.target.id !== "setSave") return;
     try {

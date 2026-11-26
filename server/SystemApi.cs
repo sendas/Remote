@@ -48,6 +48,50 @@ public static class SystemApi
             return Results.Json(new { message = msg, ok = Updater.LastOk });
         });
 
+        // pacote para pen USB: tudo o que é preciso para instalar à mão num PC (agente, .NET, chave)
+        app.MapGet("/api/admin/pen-package", (HttpContext ctx, Hub hub, ServerConfig cfg, Audit audit) =>
+        {
+            var s = Admin(ctx, hub);
+            if (s == null) return Results.StatusCode(403);
+            var dir = cfg.DeployDir;
+            var leve = Path.Combine(dir, "leve");
+            var json = Path.Combine(dir, "instalar.json");
+            if (!Directory.Exists(leve) || !File.Exists(json))
+                return Results.Json(new { error = "A partilha de instalação ainda não está preparada (preparar-partilha.ps1)." }, statusCode: 400);
+            audit.Write(s.Username, "pacote-pen", "");
+            var tmp = Path.Combine(Path.GetTempPath(), $"salaviva-pen-{Guid.NewGuid():N}.zip");
+            try
+            {
+                using (var z = System.IO.Compression.ZipFile.Open(tmp, System.IO.Compression.ZipArchiveMode.Create))
+                {
+                    void Add(string file, string name, bool store = false) =>
+                        System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(z, file, "SalaViva/" + name,
+                            store ? System.IO.Compression.CompressionLevel.NoCompression : System.IO.Compression.CompressionLevel.Fastest);
+                    void AddText(string name, string text)
+                    {
+                        var e = z.CreateEntry("SalaViva/" + name);
+                        using var w = new StreamWriter(e.Open(), new UTF8Encoding(false));
+                        w.Write(text);
+                    }
+                    foreach (var f in Directory.GetFiles(leve)) Add(f, "leve/" + Path.GetFileName(f));
+                    Add(json, "instalar.json");
+                    AddText("instalar.cmd", DeployShareKeeper.InstallCmd(Environment.MachineName));
+                    AddText("INSTALAR.cmd", PenLauncher);
+                    AddText("LEIA-ME.txt", PenReadme);
+                    var net = Path.Combine(dir, "dotnet");
+                    if (Directory.Exists(net))
+                        foreach (var f in Directory.GetFiles(net, "*.exe")) Add(f, "dotnet/" + Path.GetFileName(f), store: true);
+                }
+                var stream = new FileStream(tmp, FileMode.Open, FileAccess.Read, FileShare.Delete, 81920, FileOptions.DeleteOnClose);
+                return Results.File(stream, "application/zip", "SalaViva-pen.zip");
+            }
+            catch
+            {
+                try { File.Delete(tmp); } catch { }
+                throw;
+            }
+        });
+
         app.MapPost("/api/admin/install-now", (HttpContext ctx, Hub hub, Audit audit) =>
         {
             var s = Admin(ctx, hub);
@@ -142,6 +186,38 @@ public static class SystemApi
         }
         catch { return null; }
     }
+
+    /// <summary>Duplo clique na pen: pede administrador, instala o .NET se faltar e abre o assistente.</summary>
+    private const string PenLauncher =
+        "@echo off\r\n" +
+        "rem SalaViva - instalar neste PC (duplo clique)\r\n" +
+        "net session >nul 2>&1\r\n" +
+        "if errorlevel 1 (\r\n" +
+        "  powershell -NoProfile -Command \"Start-Process -FilePath '%~f0' -Verb RunAs\"\r\n" +
+        "  exit /b\r\n" +
+        ")\r\n" +
+        "set NETV=0\r\n" +
+        "for /f \"tokens=3\" %%a in ('reg query \"HKLM\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full\" /v Release 2^>nul ^| find \"Release\"') do set NETV=%%a\r\n" +
+        "set /a NETD=%NETV% 2>nul\r\n" +
+        "if %NETD% GEQ 394802 goto assistente\r\n" +
+        "if not exist \"%~dp0dotnet\\ndp48-x86-x64-allos-enu.exe\" (\r\n" +
+        "  echo Este PC precisa do .NET Framework 4.8 e a pasta dotnet esta vazia.\r\n" +
+        "  pause\r\n" +
+        "  exit /b\r\n" +
+        ")\r\n" +
+        "echo A instalar o .NET Framework 4.8 - pode demorar 10 minutos. Nao feches esta janela.\r\n" +
+        "\"%~dp0dotnet\\ndp48-x86-x64-allos-enu.exe\" /passive /norestart\r\n" +
+        "echo .NET terminou com o codigo %errorlevel% (0 ou 3010 = instalado).\r\n" +
+        ":assistente\r\n" +
+        "start \"\" \"%~dp0leve\\ClassroomAgent.exe\"\r\n" +
+        "exit /b\r\n";
+
+    private const string PenReadme =
+        "SalaViva - pen de instalacao\r\n\r\n" +
+        "Num PC: abre a pasta SalaViva e faz duplo clique em INSTALAR.cmd.\r\n" +
+        "Pede as credenciais de administrador, instala o .NET se faltar (Windows 7) e abre o assistente:\r\n" +
+        "escolhe a escola, a sala e o nome a mostrar, e carrega em Instalar.\r\n\r\n" +
+        "ATENCAO: esta pasta tem a chave do servidor (instalar.json). Nao a partilhes; apaga-a no fim.\r\n";
 
     private static string Category(string r) =>
         r.StartsWith("Instalado", StringComparison.OrdinalIgnoreCase) ? "Instalado agora" :
