@@ -254,9 +254,25 @@ internal static class Installer
 
     private static void Write(string msg)
     {
+        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}";
+        try { File.AppendAllText(LogPath, line); }
+        catch { }
+        // relatório no servidor (\\SERVIDOR\SalaVivaRelatorios$\PC.log), para se ver na consola porque é que um PC
+        // não instalou, mesmo quando a firewall não deixa o servidor chegar ao PC
         try
         {
-            File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {msg}{Environment.NewLine}");
+            var src = Path.GetDirectoryName(Compat.ExePath) ?? "";
+            if (src.StartsWith(@"\\"))
+            {
+                var host = src.Substring(2).Split('\\')[0];
+                var dir = $@"\\{host}\SalaVivaRelatorios$";
+                if (Directory.Exists(dir))
+                {
+                    var f = Path.Combine(dir, Environment.MachineName + ".log");
+                    if (File.Exists(f) && new FileInfo(f).Length > 32 * 1024) File.Delete(f);
+                    File.AppendAllText(f, line);
+                }
+            }
         }
         catch { }
         Log.Write("Instalador: " + msg);

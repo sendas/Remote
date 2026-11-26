@@ -89,6 +89,9 @@ if (-not $existe) {
     net share "$Partilha=$Pasta" "/GRANT:$todos,READ" "/GRANT:$admins,FULL" | Out-Null
 }
 
+# relatórios dos PCs (e instalar.cmd com verificação do .NET)
+if (Test-Path "$PSScriptRoot\ativar-relatorios.ps1") { & "$PSScriptRoot\ativar-relatorios.ps1" -Pasta $Pasta | Out-Null }
+
 Write-Host ''
 Write-Host '=== Partilha pronta ===' -ForegroundColor Green
 Write-Host "Script de arranque para a GPO : \\$($env:COMPUTERNAME)\$Partilha\instalar.cmd"

@@ -34,6 +34,7 @@ public static class SystemApi
                 installTask = new { exists, running, lastRun },
                 agents = new { total = hub.AgentVersions().Total, outdated = hub.AgentVersions().Outdated },
                 report = LatestReport(),
+                pcReport = PcReport(cfg),
             });
         });
 
@@ -116,6 +117,28 @@ public static class SystemApi
                 .Select(g => new { category = g.Key, count = g.Count() })
                 .OrderByDescending(g => g.count).ToList();
             return new { file = f.Name, time = f.LastWriteTime, total = rows.Count, summary, rows };
+        }
+        catch { return null; }
+    }
+
+    /// <summary>O que cada PC disse da última vez que correu o instalador (GPO no arranque ou tarefa imediata).</summary>
+    private static object? PcReport(ServerConfig cfg)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(Path.Combine(cfg.DeployDir, "relatorios"));
+            if (!dir.Exists) return new { missing = true };
+            var rows = dir.GetFiles("*.log").OrderByDescending(f => f.LastWriteTime).Take(2000).Select(f =>
+            {
+                var last = "";
+                try { last = File.ReadLines(f.FullName, Encoding.UTF8).LastOrDefault(l => l.Trim().Length > 0) ?? ""; } catch { }
+                var msg = last.Length > 20 ? last[20..] : last; // tira "aaaa-mm-dd hh:mm:ss "
+                return new { pc = Path.GetFileNameWithoutExtension(f.Name), result = msg, time = f.LastWriteTime };
+            }).ToList();
+            var summary = rows.GroupBy(r => Category(r.result))
+                .Select(g => new { category = g.Key, count = g.Count() })
+                .OrderByDescending(g => g.count).ToList();
+            return new { missing = false, total = rows.Count, summary, rows };
         }
         catch { return null; }
     }

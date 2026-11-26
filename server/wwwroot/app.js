@@ -1006,6 +1006,7 @@
       : `<p>${t.running ? "⏳ <strong>A instalar agora…</strong> (atualiza sozinho)" : "Pronto."} ${t.lastRun ? `<span class="muted">Última vez: ${esc(t.lastRun)}</span>` : ""}</p>`;
     $("#sysInstallNow").disabled = !t.exists || t.running;
     renderReport(s.report);
+    state.pcReport = s.pcReport; renderPcReport();
   }
   function renderReport(rep) {
     if (!rep) { $("#sysReport").innerHTML = `<p class="muted">Ainda não há relatórios de instalação.</p>`; return; }
@@ -1016,6 +1017,21 @@
         `<tr><td>${esc(r.pc)}</td><td class="small">${esc(r.result)}</td></tr>`).join("")}</tbody></table>`;
     state.lastReport = rep;
   }
+  function renderPcReport() {
+    const rep = state.pcReport, el = $("#sysPcReport");
+    if (!rep) { el.innerHTML = ""; return; }
+    if (rep.missing) {
+      el.innerHTML = `<p class="warn small">Ainda não está ativado. No servidor, na pasta do agente: <code>.\\ativar-relatorios.ps1</code></p>`;
+      return;
+    }
+    const q = ($("#pcRepSearch").value || "").trim().toLowerCase();
+    const rows = q ? rep.rows.filter((r) => r.pc.toLowerCase().includes(q)) : rep.rows;
+    el.innerHTML = `<div class="report-summary">${rep.summary.map((g) => `<span class="chip">${esc(g.category)}: ${g.count}</span>`).join("")}</div>
+      <table class="table"><thead><tr><th>PC</th><th>Quando</th><th>Resultado</th></tr></thead><tbody>${rows.slice(0, 300).map((r) =>
+        `<tr><td>${esc(r.pc)}</td><td class="small">${new Date(r.time).toLocaleString("pt-PT")}</td><td class="small">${esc(r.result)}</td></tr>`).join("") ||
+        `<tr><td colspan="3" class="muted">Nenhum PC escreveu ainda.</td></tr>`}</tbody></table>`;
+  }
+  $("#pcRepSearch").addEventListener("input", renderPcReport);
   function categoryOf(r) {
     if (/^Instalado/i.test(r)) return "Instalado agora";
     if (/^Já instalado/i.test(r)) return "Já tinha o agente";
