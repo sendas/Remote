@@ -136,7 +136,12 @@ public static class SystemApi
     {
         if (!OperatingSystem.IsWindows()) return (false, false, "");
         var (code, output) = Run("schtasks.exe", $"/query /tn {InstallTask} /fo list /v");
-        if (code != 0) return (false, false, "");
+        if (code != 0)
+        {
+            // às vezes o schtasks falha a correr dentro do serviço; o ficheiro da tarefa chega para saber que existe
+            var f = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "Tasks", InstallTask);
+            return File.Exists(f) ? (true, false, "") : (false, false, "");
+        }
         // o texto vem no idioma do Windows: procura as palavras em português e em inglês
         var running = output.Contains("Em execução", StringComparison.OrdinalIgnoreCase) ||
                       output.Contains("A ser executad", StringComparison.OrdinalIgnoreCase) ||
