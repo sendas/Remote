@@ -283,3 +283,6 @@ dialog::backdrop { background: rgba(10, 12, 24, .5); backdrop-filter: blur(2px);
 .settings-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }
 label.inline { display: flex; align-items: center; gap: 6px; font-weight: 400; }
 label.inline input { width: auto; }
+
+.viewer-stage:fullscreen { width: 100vw; height: 100vh; background: #000; }
+.viewer-stage:-webkit-full-screen { width: 100vw; height: 100vh; background: #000; }

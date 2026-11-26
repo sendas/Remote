@@ -688,7 +688,20 @@
   $("#viewerMsg").addEventListener("click", () => state.viewing && openMessage([state.viewing]));
   $("#viewerProcs").addEventListener("click", () => state.viewing && openProcs(state.viewing));
   $("#viewerType").addEventListener("click", () => state.viewing && runAction("type", [state.viewing]));
-  $("#viewerFull").addEventListener("click", () => $("#viewerStage").requestFullscreen?.().catch(() => {}));
+  // ecrã inteiro (Safari no Mac usa os nomes "webkit"); duplo clique na imagem também alterna
+  function toggleViewerFull() {
+    const st = $("#viewerStage");
+    const cur = document.fullscreenElement || document.webkitFullscreenElement;
+    try {
+      if (cur) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else {
+        const r = (st.requestFullscreen || st.webkitRequestFullscreen).call(st);
+        if (r && r.catch) r.catch(() => toast("O browser não deixou abrir em ecrã inteiro."));
+      }
+    } catch { toast("O browser não deixou abrir em ecrã inteiro."); }
+  }
+  $("#viewerFull").addEventListener("click", toggleViewerFull);
+  vimg.addEventListener("dblclick", () => { if (!vimg.classList.contains("control")) toggleViewerFull(); });
   $("#viewerSave").addEventListener("click", () => {
     if (!state.viewerUrl) return;
     const a = document.createElement("a");
