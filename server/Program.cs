@@ -65,6 +65,7 @@ builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSe
 if (cfg.AgentPipe) builder.Services.AddHostedService<PipeListener>();
 builder.Services.AddSingleton(sp => new Updater(sp.GetRequiredService<ServerConfig>(), sp.GetRequiredService<ILogger<Updater>>(), sp));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Updater>());
+builder.Services.AddHostedService<DeployShareKeeper>();
 
 var app = builder.Build();
 Hub.CleanupOldFiles();
