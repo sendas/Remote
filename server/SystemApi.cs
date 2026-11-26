@@ -76,7 +76,7 @@ public static class SystemApi
                     foreach (var f in Directory.GetFiles(leve)) Add(f, "leve/" + Path.GetFileName(f));
                     Add(json, "instalar.json");
                     AddText("instalar.cmd", DeployShareKeeper.InstallCmd(Environment.MachineName));
-                    AddText("INSTALAR.cmd", PenLauncher);
+                    AddText("Instalar-SalaViva.cmd", PenLauncher);
                     AddText("LEIA-ME.txt", PenReadme);
                     var net = Path.Combine(dir, "dotnet");
                     if (Directory.Exists(net))
@@ -188,7 +188,7 @@ public static class SystemApi
     }
 
     /// <summary>Duplo clique na pen: pede administrador, instala o .NET se faltar e abre o assistente.</summary>
-    private const string PenLauncher =
+    public const string PenLauncher =
         "@echo off\r\n" +
         "rem SalaViva - instalar neste PC (duplo clique)\r\n" +
         "net session >nul 2>&1\r\n" +
@@ -214,7 +214,7 @@ public static class SystemApi
 
     private const string PenReadme =
         "SalaViva - pen de instalacao\r\n\r\n" +
-        "Num PC: abre a pasta SalaViva e faz duplo clique em INSTALAR.cmd.\r\n" +
+        "Num PC: abre a pasta SalaViva e faz duplo clique em Instalar-SalaViva.cmd.\r\n" +
         "Pede as credenciais de administrador, instala o .NET se faltar (Windows 7) e abre o assistente:\r\n" +
         "escolhe a escola, a sala e o nome a mostrar, e carrega em Instalar.\r\n\r\n" +
         "ATENCAO: esta pasta tem a chave do servidor (instalar.json). Nao a partilhes; apaga-a no fim.\r\n";

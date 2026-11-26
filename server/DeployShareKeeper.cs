@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Security.Principal;
 using System.Text;
 
@@ -49,6 +49,10 @@ public sealed class DeployShareKeeper : BackgroundService
         var cmd = Path.Combine(dir, "instalar.cmd");
         var text = InstallCmd(Environment.MachineName);
         if (!File.Exists(cmd) || File.ReadAllText(cmd) != text) File.WriteAllText(cmd, text, Encoding.ASCII);
+        // Instalar-SalaViva.cmd: o mesmo da pen, para correr diretamente da partilha num PC (assistente + .NET)
+        var launcher = Path.Combine(dir, "Instalar-SalaViva.cmd");
+        if (!File.Exists(launcher) || File.ReadAllText(launcher) != SystemApi.PenLauncher)
+            File.WriteAllText(launcher, SystemApi.PenLauncher, Encoding.ASCII);
 
         // 2) relatórios: pasta + permissões + partilha
         var rel = Path.Combine(dir, "relatorios");
