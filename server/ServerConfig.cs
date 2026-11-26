@@ -38,9 +38,25 @@ public sealed class ServerConfig
     public string DeployDir { get; set; } = @"C:\Deploy\SalaDeAula";
     /// <summary>Nome da partilha de DeployDir (os PCs atualizam-se a partir de \\SERVIDOR\&lt;partilha&gt;\leve).</summary>
     public string DeployShare { get; set; } = "SalaDeAula$";
-    /// <summary>Nome de início de sessão dos alunos (sem domínio), ex.: a9999. Usado nos PCs partilhados
-    /// ("só aparece quando é um aluno"): quem não corresponde conta como professor.</summary>
-    public string StudentLoginPattern { get; set; } = @"^a\d+$";
+    /// <summary>Contas de alunos (sem domínio), separadas por vírgulas: # = números, * = qualquer coisa.
+    /// Ex.: "a#, prova*". Nos PCs partilhados, quem não corresponde conta como professor (PC escondido).</summary>
+    public string StudentLogins { get; set; } = "a#, prova*, exame*";
+
+    /// <summary>true se o nome de início de sessão (sem domínio) é de um aluno.</summary>
+    public bool IsStudentLogin(string user)
+    {
+        var u = user ?? "";
+        if (u.Contains('\\')) u = u[(u.LastIndexOf('\\') + 1)..];
+        if (u.Contains('@')) u = u[..u.IndexOf('@')];
+        foreach (var raw in (StudentLogins ?? "").Split(',', ';'))
+        {
+            var w = raw.Trim();
+            if (w.Length == 0) continue;
+            var re = "^" + System.Text.RegularExpressions.Regex.Escape(w).Replace("\\*", ".*").Replace("\\#", "\\d+").Replace("#", "\\d+") + "$";
+            if (System.Text.RegularExpressions.Regex.IsMatch(u, re, System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return true;
+        }
+        return false;
+    }
     /// <summary>Chave partilhada que os agentes dos alunos têm de apresentar.</summary>
     public string EnrollmentKey { get; set; } = "";
     public List<TeacherAccount> Teachers { get; set; } = new();

@@ -28,6 +28,7 @@ public static class SystemApi
                 startedAt = AppVersion.StartedAt,
                 autoUpdate = cfg.AutoUpdate,
                 window = cfg.UpdateWindow,
+                studentLogins = cfg.StudentLogins,
                 lastCheck = Updater.LastCheck,
                 lastResult = Updater.LastResult,
                 lastOk = Updater.LastOk,
@@ -119,6 +120,7 @@ public static class SystemApi
             {
                 cfg.AutoUpdate = b["autoUpdate"]?.GetValue<bool>() ?? cfg.AutoUpdate;
                 cfg.UpdateWindow = win;
+                if (b["studentLogins"] is { } sl) cfg.StudentLogins = sl.ToString().Trim();
                 cfg.Save();
             }
             audit.Write(s.Username, "definicoes-atualizacao", $"auto={cfg.AutoUpdate} janela={cfg.UpdateWindow}");

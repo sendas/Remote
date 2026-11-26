@@ -999,6 +999,7 @@
       <div class="settings-row">
         <label class="check"><input type="checkbox" id="setAuto" ${s.autoUpdate ? "checked" : ""}> Atualizar automaticamente</label>
         <label class="inline">entre <input id="setWin" value="${esc(s.window)}" size="11" placeholder="20:00-07:00"></label>
+        <label class="inline" title="PCs partilhados só aparecem quando a sessão é de um aluno. # = números, * = qualquer coisa">Contas de alunos <input id="setStud" value="${esc(s.studentLogins || "")}" size="22" placeholder="a#, prova*"></label>
         <button id="setSave">Guardar</button>
       </div>`;
     const t = s.installTask;
@@ -1056,7 +1057,7 @@
   $("#sysUpdate").addEventListener("click", async (e) => {
     if (e.target.id !== "setSave") return;
     try {
-      await api("/api/admin/settings", { method: "POST", body: { autoUpdate: $("#setAuto").checked, window: $("#setWin").value.trim() } });
+      await api("/api/admin/settings", { method: "POST", body: { autoUpdate: $("#setAuto").checked, window: $("#setWin").value.trim(), studentLogins: $("#setStud").value.trim() } });
       toast("⚙️ Definições guardadas");
       loadSystem();
     } catch (err) { toast(err.message); }

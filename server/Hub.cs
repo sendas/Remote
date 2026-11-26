@@ -865,11 +865,7 @@ public sealed partial class Hub
     private bool ShouldHide(AgentConnection a)
     {
         if (!a.HideForTeachers || string.IsNullOrWhiteSpace(a.User)) return false;
-        var u = a.User;
-        if (u.Contains('\\')) u = u[(u.LastIndexOf('\\') + 1)..];
-        if (u.Contains('@')) u = u[..u.IndexOf('@')];
-        try { return !System.Text.RegularExpressions.Regex.IsMatch(u, _cfg.StudentLoginPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase); }
-        catch { return false; }
+        return !_cfg.IsStudentLogin(a.User);
     }
 
     private void BroadcastToTeachers(AgentConnection a, object msg)
