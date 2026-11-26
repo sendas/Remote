@@ -54,6 +54,24 @@ public sealed class DeployShareKeeper : BackgroundService
         if (!File.Exists(launcher) || File.ReadAllText(launcher) != SystemApi.PenLauncher)
             File.WriteAllText(launcher, SystemApi.PenLauncher, Encoding.ASCII);
 
+        // 1b) pin do certificado no instalar.json (chave pública: não muda quando o certificado é renovado)
+        try
+        {
+            var jsonPath = Path.Combine(dir, "instalar.json");
+            if (File.Exists(jsonPath))
+            {
+                using var cert = Certificates.Load(_cfg);
+                var pin = Certificates.Pin(cert);
+                var n = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(jsonPath).TrimStart('\uFEFF'))!.AsObject();
+                if ((string?)n["CertificatePin"] != pin)
+                {
+                    n["CertificatePin"] = pin;
+                    File.WriteAllText(jsonPath, n.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                }
+            }
+        }
+        catch (Exception ex) { _log.LogDebug("pin: {Msg}", ex.Message); }
+
         // 2) relatórios: pasta + permissões + partilha
         var rel = Path.Combine(dir, "relatorios");
         Directory.CreateDirectory(rel);

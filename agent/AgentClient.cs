@@ -85,8 +85,13 @@ internal sealed class AgentClient
                         if (cert == null) return false;
                         if (string.IsNullOrWhiteSpace(_cfg.CertificatePin))
                             return errors == System.Net.Security.SslPolicyErrors.None;
+                        var want = _cfg.CertificatePin.Replace(":", "").Trim();
+                        // aceita o SHA-256 do certificado (antigo) ou da chave pública (não muda quando o certificado é renovado)
                         var pin = Compat.Hex(Compat.Sha256(cert.GetRawCertData()));
-                        return string.Equals(pin, _cfg.CertificatePin.Replace(":", "").Trim(), StringComparison.OrdinalIgnoreCase);
+                        if (string.Equals(pin, want, StringComparison.OrdinalIgnoreCase)) return true;
+                        using var c2 = new System.Security.Cryptography.X509Certificates.X509Certificate2(cert);
+                        var spki = Compat.Hex(Compat.Sha256(c2.PublicKey.ExportSubjectPublicKeyInfo()));
+                        return string.Equals(spki, want, StringComparison.OrdinalIgnoreCase);
                     };
                     using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                         await cws.ConnectAsync(new Uri(url), cts.Token);
